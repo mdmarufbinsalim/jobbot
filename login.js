@@ -65,9 +65,12 @@
   }
 
   // Code entry page: after a short wait, ask the background worker to read the code from the SMS inbox, then type it in.
+  // Inbox page for the saved number, unless a URL was typed into the popup (assumes a Canadian temp-number.com page).
+  const inboxUrl = () => cfg.smsUrl || (cfg.loginPhone ? `https://temp-number.com/temporary-numbers/canada/${cfg.loginPhone.replace(/\D/g, '')}` : '');
+
   function handleCode(field) {
     if (codeTried) return status('Verification: code submitted');
-    if (!cfg.smsUrl) return status('Verification: waiting for you to enter the SMS code (set the SMS inbox URL in the popup to automate)');
+    if (!inboxUrl()) return status('Verification: waiting for you to enter the SMS code (save your phone number or an SMS inbox URL in the popup)');
     if (!sessionStorage.getItem(SMS_KEY)) sessionStorage.setItem(SMS_KEY, String(Date.now()));
     const requestedAt = Number(sessionStorage.getItem(SMS_KEY));
 
@@ -75,7 +78,7 @@
       const left = Math.ceil((SMS_WAIT_MS - (Date.now() - requestedAt)) / 1000);
       if (left > 0) return status(`Verification: checking the SMS inbox in ${left}s…`);
       fetchStarted = true;
-      chrome.runtime.sendMessage({ type: 'fetch-sms', url: cfg.smsUrl, requestedAt });
+      chrome.runtime.sendMessage({ type: 'fetch-sms', url: inboxUrl(), requestedAt });
       return status('Verification: reading the code from the SMS inbox…');
     }
     if (cfg.smsCode?.code && cfg.smsCode.at >= requestedAt) {
@@ -91,6 +94,10 @@
 
   function tick() {
     if (!cfg.enabled || !cfg.autoLogin) return status('Auto-login is off');
+
+    const codeField = findCodeField();
+    if (codeField && !findSmsOption()) return handleCode(codeField); // reading the SMS code needs neither credentials nor attempts
+
     if (!cfg.loginPhone || !cfg.loginPin) return status('Auto-login paused: save phone and PIN in the popup');
     if (attempts() >= MAX_ATTEMPTS) return status('Auto-login stopped: attempt limit reached (click ↻ in the sidebar to reset)');
 
@@ -103,9 +110,6 @@
       if (!sms.radio.checked) (sms.box || sms.radio).click();
       return pressContinue((ok) => status(ok ? 'Verification: code requested by SMS, enter it when it arrives' : 'Verification: SMS chosen, no send button found'));
     }
-
-    const codeField = findCodeField();
-    if (codeField) return handleCode(codeField);
 
     const pin = findPin();
     if (pin) {

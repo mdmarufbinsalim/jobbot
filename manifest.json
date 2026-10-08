@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Jobbot",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Shows the current step of the Amazon hiring flow (search, job, application, login) plus a live GraphQL inspector.",
   "permissions": [
     "storage"
@@ -56,6 +56,16 @@
       ],
       "js": [
         "reader.js"
+      ],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://hiring.amazon.com/application/*",
+        "https://hiring.amazon.ca/application/*"
+      ],
+      "js": [
+        "application.js"
       ],
       "run_at": "document_idle"
     }

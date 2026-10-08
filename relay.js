@@ -293,7 +293,7 @@
     const sid = schedule?.scheduleId;
     if (step === 0) return firstId ? `Found ${jobs.size} job(s). First: ${firstId}` : 'Waiting for searchJobCardsByLocation…';
     if (step === 1) return schedule ? `Schedule found: ${sid}` : 'Waiting for searchScheduleCards…';
-    if (step === 2) return `Application page${new URLSearchParams(location.search).get('page') ? ` (${new URLSearchParams(location.search).get('page')})` : ''}${sid ? ` · schedule ${sid}` : ''}`;
+    if (step === 2) return `Application · ${window.__jobbotAppStatus || location.hash.split('?')[0] || 'loading…'}${sid ? ` · schedule ${sid}` : ''}`;
     if (step === 3) return `Login page · ${window.__jobbotLoginStatus || 'starting auto-login…'}`;
     return 'Not on a known step';
   }
@@ -398,6 +398,7 @@
     if (!enabled || !autoOpen || navAt) return false;
     const step = currentStep();
     if (step < 0) return false;
+    if (step === 2) return false; // the application pages are driven by application.js and may need you; never auto-refresh them
     if (step === 3) return !/^verification|waiting for you|auto-login (is off|paused|stopped)/i.test(window.__jobbotLoginStatus || '');
     return true;
   }
@@ -427,6 +428,7 @@
   });
   window.addEventListener('hashchange', render);
   window.addEventListener('popstate', render);
+  window.addEventListener('jobbot-app-status', () => { if (host && enabled) paintSteps(); });
   let lastLoginStatus = '';
   window.addEventListener('jobbot-login-status', () => {
     if (window.__jobbotLoginStatus !== lastLoginStatus) { lastLoginStatus = window.__jobbotLoginStatus; progress(); }
