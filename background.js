@@ -62,7 +62,11 @@ chrome.runtime.onMessage.addListener((msg, sender) => {
   chrome.storage.session.get('kycLinks').then(({ kycLinks = [] }) => {
     const rest = kycLinks.filter((k) => k.url !== link.href);
     return chrome.storage.session.set({ kycLinks: [{ url: link.href, copied: !!msg.copied, at: Date.now() }, ...rest] });
-  }).then(() => chrome.tabs.update(sender.tab.id, { url: SEARCH_URLS[site] }));
+  }).then(() => chrome.storage.local.get('continuous')).then(({ continuous }) => {
+    // Continuous (default): start over from the search page. Otherwise one successful run is enough: stop here.
+    if (continuous === false) return chrome.storage.local.set({ paused: true });
+    return chrome.tabs.update(sender.tab.id, { url: SEARCH_URLS[site] });
+  });
 });
 
 // let content scripts (the sidebar panel) read the saved KYC links too

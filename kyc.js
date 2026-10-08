@@ -16,7 +16,7 @@
     });
   }
 
-  chrome.storage.local.get(['enabled', 'paused']).then(async (s) => {
+  chrome.storage.local.get(['paused']).then(async (s) => {
     if (s.paused) return;
     const link = location.href;
     let copied = true;

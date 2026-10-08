@@ -8,7 +8,7 @@
   const REFRESH_KEY = 'jobbot-app-refreshes';
   const CLICK_DELAY_MS = 600;
 
-  // Highest priority first: the first one found (and enabled) is pressed.
+  // Highest priority first: the first one found is pressed.
   const BUTTONS = [
     /^create (an )?application$/i,
     /^start identity verification$/i,
@@ -19,7 +19,7 @@
 
   const loadedAt = Date.now();
   const clicked = new Set(); // "route|button text" already pressed, so nothing is clicked twice on one page
-  let cfg = { enabled: true, autoOpen: true, paused: false };
+  let cfg = { paused: false };
   let pending = false; // a delayed click is scheduled
 
   function status(text) {
@@ -92,7 +92,6 @@
 
   function tick() {
     if (cfg.paused) return status(`${route()} · Paused`);
-    if (!cfg.autoOpen) return status(`${route()} · Auto-continue is off`);
     if (pending) return;
     const r = route();
 
@@ -116,15 +115,13 @@
     setTimeout(() => { pending = false; btn.click(); status(`${r} · ${label} clicked`); }, CLICK_DELAY_MS);
   }
 
-  chrome.storage.local.get(['enabled', 'autoOpen', 'paused']).then((s) => {
-    cfg = { enabled: s.enabled !== false, autoOpen: s.autoOpen !== false, paused: !!s.paused };
+  chrome.storage.local.get(['paused']).then((s) => {
+    cfg = { paused: !!s.paused };
     tick();
     setInterval(tick, 700);
   });
   chrome.storage.onChanged.addListener((c, area) => {
     if (area !== 'local') return;
-    if ('enabled' in c) cfg.enabled = c.enabled.newValue !== false;
     if ('paused' in c) cfg.paused = !!c.paused.newValue;
-    if ('autoOpen' in c) cfg.autoOpen = c.autoOpen.newValue !== false;
   });
 })();

@@ -3,7 +3,7 @@
 (() => {
   const DELAY_MS = 800; // let the page render its pre-filled value first
   const loadedAt = Date.now();
-  let cfg = { enabled: true, autoOpen: true, paused: false };
+  let cfg = { paused: false };
   let allDone = false, clearDone = false;
 
   const onSearch = () => location.hash.startsWith('#/jobSearch');
@@ -33,7 +33,7 @@
   }
 
   function tick() {
-    if (!cfg.autoOpen || cfg.paused || !onSearch() || Date.now() - loadedAt < DELAY_MS) return;
+    if (cfg.paused || !onSearch() || Date.now() - loadedAt < DELAY_MS) return;
     if (!allDone) {
       const all = [...document.querySelectorAll('button, [role=button], [role=tab], a, label, span, div')].find((b) => visible(b) && !b.children.length && /^all$/i.test(textOf(b)));
       if (all) { all.click(); allDone = true; }
@@ -45,14 +45,12 @@
     }
   }
 
-  chrome.storage.local.get(['enabled', 'autoOpen', 'paused']).then((s) => {
-    cfg = { enabled: s.enabled !== false, autoOpen: s.autoOpen !== false, paused: !!s.paused };
+  chrome.storage.local.get(['paused']).then((s) => {
+    cfg = { paused: !!s.paused };
     setInterval(tick, 500);
   });
   chrome.storage.onChanged.addListener((c, area) => {
     if (area !== 'local') return;
-    if ('enabled' in c) cfg.enabled = c.enabled.newValue !== false;
     if ('paused' in c) cfg.paused = !!c.paused.newValue;
-    if ('autoOpen' in c) cfg.autoOpen = c.autoOpen.newValue !== false;
   });
 })();

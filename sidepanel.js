@@ -7,7 +7,10 @@ const ICON = {
   play: '<svg viewBox="0 0 24 24"><path d="M7 4.5v15l12-7.5z" fill="currentColor" /></svg>',
   restart: '<svg viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.6-5.9M20 4v5h-5" /></svg>',
 };
-$('restart').innerHTML = ICON.restart;
+ICON.copy = '<svg viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/></svg>';
+ICON.open = '<svg viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg>';
+ICON.inbox = '<svg viewBox="0 0 24 24"><path d="M3 13l2.5-7a2 2 0 0 1 1.9-1.3h9.2A2 2 0 0 1 18.5 6L21 13v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M3 13h5l1 3h6l1-3h5"/></svg>';
+$('restart').innerHTML = `${ICON.restart}Restart`;
 
 let st = {};        // chrome.storage.local values
 let live = null;    // status published by the active hiring tab
@@ -15,19 +18,28 @@ let log = [];
 let kyc = [];
 let filter = '';
 
-function copy(text, btn) {
-  navigator.clipboard.writeText(text).then(() => {
-    const old = btn.textContent; btn.textContent = 'Copied';
-    setTimeout(() => { btn.textContent = old; }, 900);
-  });
+let toastTimer;
+function toast(msg) {
+  const t = $('toast');
+  t.textContent = msg; t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), 1400);
 }
-const copyBtn = (text) => { const b = h('button', 'btn', 'Copy'); b.onclick = () => copy(text, b); return b; };
-const empty = (msg) => h('div', 'empty', msg);
+function copy(text) { navigator.clipboard.writeText(text).then(() => toast('Copied to clipboard')); }
+const iconBtn = (icon, label, fn) => { const b = h('button', 'mini'); b.innerHTML = `${icon}${label}`; b.onclick = fn; return b; };
+const copyBtn = (text) => iconBtn(ICON.copy, 'Copy', () => copy(text));
+function empty(title, hint) {
+  const d = h('div', 'empty');
+  d.innerHTML = ICON.inbox;
+  d.append(h('b', '', title));
+  if (hint) d.append(h('small', '', hint));
+  return d;
+}
 
 function linkRow(url) {
   const row = h('div', 'linkrow');
   const a = h('a', '', url); a.href = url; a.target = '_blank'; a.rel = 'noopener'; a.title = url;
-  row.append(a, copyBtn(url));
+  row.append(a, copyBtn(url), iconBtn(ICON.open, 'Open', () => chrome.tabs.create({ url })));
   return row;
 }
 
@@ -36,20 +48,22 @@ function jobCard(j) {
   top.append(h('span', 'name', j.jobTitle || j.jobId));
   if (j.isNew) top.append(h('span', 'new', 'NEW'));
   const lo = j.totalPayRateMinL10N, hi = j.totalPayRateMaxL10N;
-  top.append(h('span', 'pay', lo && hi && lo !== hi ? `${lo}–${hi}` : (hi || lo || '')));
-  d.append(top,
-    h('div', 'meta', [j.locationName, j.jobTypeL10N || j.jobType, j.employmentTypeL10N || j.employmentType, `${j.scheduleCount ?? '?'} schedule(s)`, j.jobId].filter(Boolean).join(' · ')),
-    linkRow(j.link));
+  const pay = lo && hi && lo !== hi ? `${lo}–${hi}` : (hi || lo || '');
+  if (pay) top.append(h('span', 'pay', pay));
+  const tags = h('div', 'tags');
+  for (const t of [j.locationName, j.jobTypeL10N || j.jobType, j.employmentTypeL10N || j.employmentType, `${j.scheduleCount ?? '?'} schedule(s)`].filter(Boolean)) tags.append(h('span', 'tag', t));
+  d.append(top, tags, h('div', 'meta', j.jobId), linkRow(j.link));
   return d;
 }
 
 function scheduleCard(c) {
   const d = h('div', 'card'), top = h('div', 'top');
-  top.append(h('span', 'name', c.scheduleText || c.scheduleId), h('span', 'pay', c.totalPayRateL10N || ''));
-  d.append(top,
-    h('div', 'meta', [c.scheduleTypeL10N, c.hoursPerWeek && `${c.hoursPerWeek} h/wk`, c.laborDemandAvailableCount != null && `${c.laborDemandAvailableCount} open`,
-      c.firstDayOnSiteL10N && `starts ${c.firstDayOnSiteL10N}`, c.scheduleId].filter(Boolean).join(' · ')),
-    linkRow(c.link));
+  top.append(h('span', 'name', c.scheduleText || c.scheduleId));
+  if (c.totalPayRateL10N) top.append(h('span', 'pay', c.totalPayRateL10N));
+  const tags = h('div', 'tags');
+  for (const t of [c.scheduleTypeL10N, c.hoursPerWeek && `${c.hoursPerWeek} h/wk`, c.laborDemandAvailableCount != null && `${c.laborDemandAvailableCount} open`,
+    c.firstDayOnSiteL10N && `starts ${c.firstDayOnSiteL10N}`].filter(Boolean)) tags.append(h('span', 'tag', t));
+  d.append(top, tags, h('div', 'meta', c.scheduleId), linkRow(c.link));
   return d;
 }
 
@@ -107,27 +121,26 @@ function paintLive() {
   const paused = !!st.paused;
   $('chip').className = 'chip' + (paused ? ' paused' : l.chip ? ` ${l.chip}` : '');
   $('chipText').textContent = paused ? 'Paused' : l.chipText;
-  [...$('seg').children].forEach((d, i) => { d.className = i === l.step ? 'now' : i < l.step ? 'done' : ''; });
-  $('stepname').textContent = l.stepName;
-  $('detail').textContent = paused ? 'Paused — press play to continue' : l.detail;
-  $('pause').innerHTML = paused ? ICON.play : ICON.pause;
+  [...$('steps').children].forEach((li, i) => { li.className = i === l.step ? 'now' : i < l.step ? 'done' : ''; });
+  $('stepname').textContent = l.stepName.replace(/^\d\/\d\s*/, '') || 'Idle';
+  $('detail').textContent = paused ? 'Paused — press Resume to continue.' : l.detail;
+  $('pause').innerHTML = paused ? `${ICON.play}Resume` : `${ICON.pause}Pause`;
   $('pause').title = paused ? 'Resume automation' : 'Pause automation';
   $('pause').classList.toggle('go', paused);
+  try { $('where').textContent = live?.url ? new URL(live.url).host : 'Amazon hiring assistant'; } catch {}
 }
 
 function paintSettings() {
-  $('autoOpen').checked = st.autoOpen !== false;
-  $('autoLogin').checked = st.autoLogin !== false;
-  $('enabled').checked = st.enabled !== false;
+  $('continuous').checked = st.continuous !== false;
   for (const id of ['loginPhone', 'loginPin', 'smsUrl']) if (document.activeElement !== $(id)) $(id).value = st[id] || '';
 }
 
 function paintOverview() {
   const flow = st.flow || {};
   const first = (flow.jobs || []).find(([id]) => id === flow.firstId)?.[1];
-  $('job').replaceChildren(first ? jobCard(first) : empty('None yet'));
-  $('schedule').replaceChildren(flow.schedule ? scheduleCard(flow.schedule) : empty('None yet'));
-  $('kyc').replaceChildren(...(kyc.length ? kyc.map(kycCard) : [empty('None yet')]));
+  $('job').replaceChildren(first ? jobCard(first) : empty('Nothing yet', 'It shows up once the search finds one.'));
+  $('schedule').replaceChildren(flow.schedule ? scheduleCard(flow.schedule) : empty('Nothing yet', 'It shows up once the search finds one.'));
+  $('kyc').replaceChildren(...(kyc.length ? kyc.map(kycCard) : [empty('No saved links', 'KYC links appear here after the KYC step.')]));
   $('kycClear').hidden = !kyc.length;
 }
 
@@ -137,7 +150,7 @@ function paintLog() {
   const shown = visibleLog();
   $('log').replaceChildren(...(shown.length
     ? shown.slice().reverse().map((e) => entryRow(e, open.has(`${e.t}:${e.url}:${opName(e)}`)))
-    : [empty(log.length ? 'No responses match the filter.' : 'Waiting for GraphQL responses…')]));
+    : [empty(log.length ? 'No matches' : 'No responses yet', log.length ? 'Try a different filter.' : 'GraphQL responses appear here as pages load.')]));
 }
 
 const paintAll = () => { paintLive(); paintSettings(); paintOverview(); paintLog(); };
@@ -169,12 +182,22 @@ async function toActiveTab(cmd) {
 }
 $('restart').onclick = () => toActiveTab('restart');
 $('logClear').onclick = () => { log = []; chrome.storage.session.set({ gqlLog: [] }); toActiveTab('clear-log'); paintLog(); };
-$('logCopy').onclick = (ev) => copy(JSON.stringify(visibleLog(), (k, v) =>
-  k !== 'query' && typeof v === 'string' && v.length > 300 ? `${v.slice(0, 300)}… [${v.length} chars]` : v, 2), ev.target);
+$('logCopy').onclick = () => copy(JSON.stringify(visibleLog(), (k, v) =>
+  k !== 'query' && typeof v === 'string' && v.length > 300 ? `${v.slice(0, 300)}… [${v.length} chars]` : v, 2));
 $('filter').oninput = (e) => { filter = e.target.value.toLowerCase(); paintLog(); };
 $('kycClear').onclick = () => chrome.storage.session.remove('kycLinks');
-for (const id of ['autoOpen', 'autoLogin', 'enabled']) $(id).onchange = (e) => chrome.storage.local.set({ [id]: e.target.checked });
-for (const id of ['loginPhone', 'loginPin', 'smsUrl']) $(id).oninput = (e) => chrome.storage.local.set({ [id]: e.target.value.trim() });
+for (const id of ['continuous']) $(id).onchange = (e) => chrome.storage.local.set({ [id]: e.target.checked });
+let savedTimer;
+for (const id of ['loginPhone', 'loginPin', 'smsUrl']) $(id).oninput = (e) => {
+  chrome.storage.local.set({ [id]: e.target.value.trim() });
+  $('saved').classList.add('show'); clearTimeout(savedTimer);
+  savedTimer = setTimeout(() => $('saved').classList.remove('show'), 1200);
+};
+$('eye').onclick = () => {
+  const show = $('loginPin').type === 'password';
+  $('loginPin').type = show ? 'text' : 'password';
+  $('eye').textContent = show ? 'Hide' : 'Show';
+};
 for (const t of document.querySelectorAll('[data-tab]')) t.onclick = () => {
   for (const o of document.querySelectorAll('[data-tab]')) o.classList.toggle('on', o === t);
   for (const p of document.querySelectorAll('[data-pane]')) p.hidden = p.dataset.pane !== t.dataset.tab;

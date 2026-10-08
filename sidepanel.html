@@ -5,56 +5,73 @@
 <link rel="stylesheet" href="sidepanel.css">
 <main>
   <header>
-    <img src="icons/icon48.png" alt="" width="28" height="28">
-    <h1>Jobbot</h1>
+    <img class="logo" src="icons/icon48.png" alt="" width="32" height="32">
+    <div class="titles"><h1>Jobbot</h1><p id="where">Amazon hiring assistant</p></div>
     <span class="chip idle" id="chip"><i></i><span id="chipText">Idle</span></span>
-    <div class="ctl">
-      <button class="ib" id="pause" title="Pause automation"></button>
-      <button class="ib" id="restart" title="Start over from the search page"></button>
-    </div>
   </header>
 
-  <section class="now">
-    <div class="seg" id="seg"><span></span><span></span><span></span><span></span></div>
+  <section class="hero" id="hero">
+    <ol class="steps" id="steps">
+      <li><b>1</b><span>Search</span></li>
+      <li><b>2</b><span>Job</span></li>
+      <li><b>3</b><span>Apply</span></li>
+      <li><b>4</b><span>Login</span></li>
+    </ol>
     <div class="stepname" id="stepname">Idle</div>
     <div class="detail" id="detail">Open a hiring page to begin.</div>
-    <div class="toggles">
-      <label class="tg"><input type="checkbox" id="autoOpen"><span>Auto-continue</span></label>
-      <label class="tg"><input type="checkbox" id="autoLogin"><span>Auto-login</span></label>
-      <label class="tg"><input type="checkbox" id="enabled"><span>On-page panel</span></label>
+    <div class="actions">
+      <button class="act main" id="pause"></button>
+      <button class="act" id="restart" title="Start over from the search page"></button>
     </div>
   </section>
 
   <nav class="tabs" role="tablist">
-    <button class="tab on" data-tab="overview" role="tab">Overview</button>
-    <button class="tab" data-tab="log" role="tab">Log <small id="logCount">0</small></button>
-    <button class="tab" data-tab="settings" role="tab">Settings</button>
+    <button class="tab on" data-tab="overview" role="tab"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>Overview</button>
+    <button class="tab" data-tab="log" role="tab"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></svg>Log <small id="logCount">0</small></button>
+    <button class="tab" data-tab="settings" role="tab"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>Settings</button>
   </nav>
 
   <div class="pane" data-pane="overview">
-    <div class="sec"><h3>Start</h3>
-      <div class="start"><button class="btn primary" data-site="ca">Job search · amazon.ca</button><button class="btn" data-site="com">Job search · amazon.com</button></div>
+    <div class="sec">
+      <h3>Start</h3>
+      <div class="start">
+        <button class="site" data-site="ca"><b>.ca</b><span>Open job search</span></button>
+        <button class="site" data-site="com"><b>.com</b><span>Open job search</span></button>
+      </div>
     </div>
     <div class="sec"><h3>First job</h3><div id="job"></div></div>
     <div class="sec"><h3>First schedule</h3><div id="schedule"></div></div>
-    <div class="sec"><div class="sechead"><h3>Saved KYC links</h3><button class="link" id="kycClear">Clear</button></div><div id="kyc"></div></div>
+    <div class="sec"><div class="sechead"><h3>Saved KYC links</h3><button class="link" id="kycClear">Clear all</button></div><div id="kyc"></div></div>
   </div>
 
   <div class="pane" data-pane="log" hidden>
-    <div class="tools"><input type="text" id="filter" placeholder="Filter by operation or text…"><button class="btn" id="logCopy">Copy</button><button class="btn" id="logClear">Clear</button></div>
+    <div class="tools">
+      <label class="search"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg><input type="text" id="filter" placeholder="Filter by operation or text"></label>
+      <button class="btn" id="logCopy">Copy</button>
+      <button class="btn" id="logClear">Clear</button>
+    </div>
     <div id="log" class="list"></div>
   </div>
 
   <div class="pane" data-pane="settings" hidden>
     <div class="sec">
-      <h3>Account</h3>
+      <h3>Mode</h3>
+      <div class="switches">
+        <label class="sw"><input type="checkbox" id="continuous"><span class="knob"></span><span class="swtext"><b>Continuous</b><small>After a KYC link is saved, start over. Off: stop after one successful run.</small></span></label>
+      </div>
+    </div>
+    <div class="sec">
+      <div class="sechead"><h3>Account</h3><span class="saved" id="saved">Saved</span></div>
       <div class="fields">
         <label>Phone or email <input id="loginPhone" type="text" autocomplete="off" placeholder="+1…"></label>
-        <label>PIN <input id="loginPin" type="password" autocomplete="off"></label>
+        <label>PIN
+          <span class="pw"><input id="loginPin" type="password" autocomplete="off"><button type="button" class="eye" id="eye" title="Show PIN">Show</button></span>
+        </label>
         <label>SMS inbox URL <input id="smsUrl" type="text" autocomplete="off" placeholder="https://temp-number.com/…"></label>
       </div>
-      <p class="hint">Saved only in this browser's extension storage, never in the code. A public temp-number inbox can be read by anyone.</p>
+      <p class="hint">Saved only in this browser's extension storage, never in the code. A public temp-number inbox can be read by anyone, so only use it for accounts where that is acceptable.</p>
     </div>
   </div>
 </main>
+<div class="toast" id="toast" role="status"></div>
 <script src="sidepanel.js"></script>
