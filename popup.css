@@ -21,3 +21,8 @@ button:hover { filter: brightness(.95); }
 button + button { background: transparent; color: var(--fg); border: 1px solid var(--line); margin-top: 8px; }
 
 .row + .row { margin-top: 8px; }
+
+.creds { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; }
+.creds label { display: flex; flex-direction: column; gap: 2px; color: var(--muted); font-size: 11px; }
+.creds input { padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; background: transparent; color: var(--fg); font: inherit; }
+.creds small { color: var(--muted); font-size: 10px; }

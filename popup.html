@@ -14,6 +14,16 @@
     <span><b>Auto-continue</b><small id="openState">On</small></span>
     <input type="checkbox" id="autoOpen" class="switch">
   </label>
+  <label class="row">
+    <span><b>Auto-login</b><small id="loginState">On</small></span>
+    <input type="checkbox" id="autoLogin" class="switch">
+  </label>
+  <div class="creds">
+    <label>Phone or email <input id="loginPhone" type="text" autocomplete="off" placeholder="+1…"></label>
+    <label>PIN <input id="loginPin" type="password" autocomplete="off"></label>
+    <label>SMS inbox URL <input id="smsUrl" type="text" autocomplete="off" placeholder="https://temp-number.com/…"></label>
+    <small>Saved only in this browser's extension storage, never in the code.</small>
+  </div>
   <button data-site="ca">Open job search · amazon.ca</button>
   <button data-site="com">Open job search · amazon.com</button>
   <p class="hint">Turn the panel on, then open the job search. A sidebar shows the first job found and every GraphQL response. 3 seconds after each step, the tab moves on (search → job → application).</p>

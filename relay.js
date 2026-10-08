@@ -26,8 +26,15 @@
   const persistLog = () => { try { sessionStorage.setItem(LOG_KEY, JSON.stringify(entries)); } catch {} };
 
   const OPEN_DELAY_MS = 3000;
+  const STALL_MS = 5000;      // no progress for this long -> refresh the page
+  const MAX_REFRESHES = 5;    // per URL, so a dead page can't be hammered forever
+  const REFRESH_KEY = 'jobbot-refreshes';
+  let lastProgress = Date.now();
+  let gaveUp = false;
+  const progress = () => { lastProgress = Date.now(); };
   let navTimer = null, navAt = 0, navLabel = '';
   let enabled = false;
+  let secrets = []; // saved login phone/PIN: scrubbed from anything we capture, display or copy
   let autoOpen = true;
   let collapsed = false;
   let filter = '';
@@ -65,7 +72,16 @@
     e.request?.operationName || e.request?.[0]?.operationName || Object.keys(e.response?.data || {})[0] || 'unknown';
   const isBad = (e) => e.status >= 400 || !!e.response?.errors;
 
+  function redact(entry) {
+    if (!secrets.length) return entry;
+    let text = JSON.stringify(entry);
+    for (const sec of secrets) text = text.split(sec).join('***');
+    try { return JSON.parse(text); } catch { return entry; }
+  }
+
   function ingest(entry) {
+    progress();
+    entry = redact(entry);
     entries.push(entry);
     if (entries.length > MAX_LOG) entries.shift();
     persistLog();
@@ -237,7 +253,7 @@
     root.innerHTML = `<style>${CSS}</style>
       <div class="panel">
         <div class="bar"><span class="dot"></span><span class="title">Jobbot</span><span class="count"></span>
-          <button data-a="copy">Copy</button><button data-a="clear">Clear</button><button data-a="min">–</button></div>
+          <button data-a="restart" title="Start over from the search page">↻</button><button data-a="copy">Copy</button><button data-a="clear">Clear</button><button data-a="min">–</button></div>
         <div class="body">
           <div class="steps"></div>
           <div class="first"><h3>First job found</h3><div class="slot"></div></div>
@@ -253,6 +269,7 @@
     root.querySelector('[data-a=copy]').onclick = (ev) =>
       copy(JSON.stringify(visibleEntries(), (k, v) =>
         k !== 'query' && typeof v === 'string' && v.length > 300 ? `${v.slice(0, 300)}… [${v.length} chars]` : v, 2), ev.target);
+    root.querySelector('[data-a=restart]').onclick = restart;
     root.querySelector('[data-a=clear]').onclick = () => {
       jobs = new Map(); responses = 0; firstId = null; schedule = null; entries = []; persist(); persistLog(); render();
     };
@@ -277,7 +294,7 @@
     if (step === 0) return firstId ? `Found ${jobs.size} job(s). First: ${firstId}` : 'Waiting for searchJobCardsByLocation…';
     if (step === 1) return schedule ? `Schedule found: ${sid}` : 'Waiting for searchScheduleCards…';
     if (step === 2) return `Application page${new URLSearchParams(location.search).get('page') ? ` (${new URLSearchParams(location.search).get('page')})` : ''}${sid ? ` · schedule ${sid}` : ''}`;
-    if (step === 3) return `Login page (${location.hash || location.pathname}) · autofill not set up yet`;
+    if (step === 3) return `Login page · ${window.__jobbotLoginStatus || 'starting auto-login…'}`;
     return 'Not on a known step';
   }
   function paintSteps() {
@@ -291,6 +308,16 @@
     // The detail line is a sibling in the same row container; give it its own line.
     el.steps.style.flexWrap = 'wrap';
     el.steps.lastChild.style.flexBasis = '100%';
+  }
+
+  // Forget the flow state and begin again from the search page (also re-arms the login attempt limit).
+  function restart() {
+    clearTimeout(navTimer); navAt = 0;
+    try { sessionStorage.removeItem(REFRESH_KEY); } catch {}
+    jobs = new Map(); responses = 0; firstId = null; schedule = null;
+    chrome.storage.local.set({ loginReset: Date.now() }).catch(() => {});
+    const same = location.origin === SITE && location.pathname === '/app' && location.hash.startsWith(ROUTE);
+    Promise.resolve(persist()).then(() => (same ? location.reload() : location.assign(`${SITE}/app${ROUTE}`)));
   }
 
   function emptyNote(msg) { const d = document.createElement('div'); d.className = 'empty'; d.textContent = msg; return d; }
@@ -336,7 +363,9 @@
   function paintStat() {
     if (!el.stat) return;
     const secs = navAt ? Math.max(0, Math.ceil((navAt - Date.now()) / 1000)) : 0;
-    el.stat.textContent = (secs ? `${navLabel} in ${secs}s · ` : '') + `GraphQL log · ${entries.length} captured`;
+    const stalled = Math.floor((Date.now() - lastProgress) / 1000);
+    const note = gaveUp ? `Stuck: gave up after ${MAX_REFRESHES} refreshes (click ↻ to reset) · ` : secs ? `${navLabel} in ${secs}s · ` : stalled >= 2 && waitingOnAutomation() ? `No progress for ${stalled}s (refresh at ${STALL_MS / 1000}s) · ` : '';
+    el.stat.textContent = note + `GraphQL log · ${entries.length} captured`;
   }
   function tick() {
     paintStat();
@@ -364,6 +393,31 @@
       : [empty(entries.length ? 'No responses match the filter.' : 'Waiting for GraphQL responses…')]));
   }
 
+  // True while the page is waiting on something the extension drives (not on you).
+  function waitingOnAutomation() {
+    if (!enabled || !autoOpen || navAt) return false;
+    const step = currentStep();
+    if (step < 0) return false;
+    if (step === 3) return !/^verification|waiting for you|auto-login (is off|paused|stopped)/i.test(window.__jobbotLoginStatus || '');
+    return true;
+  }
+
+  function watchdog() {
+    if (!ready || !isTop) return;
+    paintStat();
+    if (!waitingOnAutomation() || Date.now() - lastProgress <= STALL_MS) return;
+    const key = location.origin + location.pathname + location.hash;
+    let rec = {};
+    try { rec = JSON.parse(sessionStorage.getItem(REFRESH_KEY)) || {}; } catch {}
+    if (rec.key !== key) rec = { key, n: 0 };
+    if (rec.n >= MAX_REFRESHES) { gaveUp = true; paintStat(); return; }
+    rec.n++;
+    try { sessionStorage.setItem(REFRESH_KEY, JSON.stringify(rec)); } catch {}
+    lastProgress = Date.now();
+    location.reload();
+  }
+  setInterval(watchdog, 1000);
+
   // Captures can arrive before the stored flow state has loaded; hold them until it has.
   let ready = false;
   const pending = [];
@@ -373,15 +427,22 @@
   });
   window.addEventListener('hashchange', render);
   window.addEventListener('popstate', render);
+  let lastLoginStatus = '';
+  window.addEventListener('jobbot-login-status', () => {
+    if (window.__jobbotLoginStatus !== lastLoginStatus) { lastLoginStatus = window.__jobbotLoginStatus; progress(); }
+    if (host && enabled) paintSteps();
+  });
   // SPA route changes made with pushState don't fire hashchange, so also watch the URL.
   let lastHref = location.href;
-  setInterval(() => { if (location.href !== lastHref) { lastHref = location.href; render(); } }, 500);
+  setInterval(() => { if (location.href !== lastHref) { lastHref = location.href; progress(); render(); } }, 500);
 
-  chrome.storage.local.get(['enabled', 'autoOpen', 'flow']).then((st) => {
+  chrome.storage.local.get(['enabled', 'autoOpen', 'flow', 'loginPhone', 'loginPin']).then((st) => {
+    secrets = [st.loginPhone, st.loginPin].filter((v) => v && v.length >= 4);
     enabled = !!st.enabled; autoOpen = st.autoOpen !== false;
     const f = st.flow;
     if (f) { jobs = new Map(f.jobs || []); responses = f.responses || 0; firstId = f.firstId || null; schedule = f.schedule || null; }
     ready = true;
+    progress();
     render();
     for (const e of pending.splice(0)) ingest(e);
   });
@@ -389,6 +450,7 @@
     if (area !== 'local') return;
     if ('enabled' in c) enabled = !!c.enabled.newValue;
     if ('autoOpen' in c) autoOpen = c.autoOpen.newValue !== false;
+    if ('loginPhone' in c || 'loginPin' in c) chrome.storage.local.get(['loginPhone', 'loginPin']).then((st) => { secrets = [st.loginPhone, st.loginPin].filter((v) => v && v.length >= 4); });
     render();
   });
 })();
