@@ -9,7 +9,7 @@
   const BUTTON_TEXT = /^(continue|next|sign in|log in|login|submit|verify|send verification code)$/i;
 
   let phoneTried = false, pinTried = false, sendTried = false, fetchStarted = false, codeTried = false;
-  let cfg = { enabled: false, autoLogin: true, loginPhone: '', loginPin: '', smsUrl: '', smsCode: null };
+  let cfg = { enabled: true, autoLogin: true, paused: false, loginPhone: '', loginPin: '', smsUrl: '', smsCode: null };
 
   const attempts = () => Number(sessionStorage.getItem(ATTEMPTS_KEY) || 0);
   const bump = () => sessionStorage.setItem(ATTEMPTS_KEY, String(attempts() + 1));
@@ -93,6 +93,7 @@
   }
 
   function tick() {
+    if (cfg.paused) return status('Paused');
     if (!cfg.enabled || !cfg.autoLogin) return status('Auto-login is off');
 
     const codeField = findCodeField();
@@ -142,15 +143,15 @@
     sessionStorage.removeItem(SMS_KEY);
   }
 
-  chrome.storage.local.get(['enabled', 'autoLogin', 'loginPhone', 'loginPin', 'loginReset', 'smsUrl', 'smsCode']).then((s) => {
+  chrome.storage.local.get(['enabled', 'autoLogin', 'paused', 'loginPhone', 'loginPin', 'loginReset', 'smsUrl', 'smsCode']).then((s) => {
     checkReset(s.loginReset);
-    cfg = { enabled: !!s.enabled, autoLogin: s.autoLogin !== false, loginPhone: s.loginPhone || '', loginPin: s.loginPin || '', smsUrl: s.smsUrl || '', smsCode: s.smsCode || null };
+    cfg = { enabled: s.enabled !== false, autoLogin: s.autoLogin !== false, paused: !!s.paused, loginPhone: s.loginPhone || '', loginPin: s.loginPin || '', smsUrl: s.smsUrl || '', smsCode: s.smsCode || null };
     tick();
     setInterval(tick, 700);
   });
   chrome.storage.onChanged.addListener((c, area) => {
     if (area !== 'local') return;
     if ('loginReset' in c) checkReset(c.loginReset.newValue);
-    for (const k of Object.keys(cfg)) if (k in c) cfg[k] = k === 'autoLogin' ? c[k].newValue !== false : (k === 'enabled' ? !!c[k].newValue : c[k].newValue || '');
+    for (const k of Object.keys(cfg)) if (k in c) cfg[k] = k === 'autoLogin' ? c[k].newValue !== false : (k === 'enabled' ? c[k].newValue !== false : k === 'paused' ? !!c[k].newValue : c[k].newValue || '');
   });
 })();

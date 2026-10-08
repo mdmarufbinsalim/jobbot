@@ -25,6 +25,7 @@ chrome.runtime.onMessage.addListener((msg, sender) => {
     try { url = new URL(msg.url); } catch { return; }
     if (url.protocol !== 'https:' || !SMS_HOSTS.has(url.hostname)) return;
     (async () => {
+      if ((await chrome.storage.local.get('paused')).paused) return;
       await closeSmsTab(false);
       await chrome.storage.local.remove('smsCode');
       await chrome.storage.local.set({ smsJob: { requestedAt: msg.requestedAt, until: Date.now() + SMS_WINDOW_MS } });
@@ -40,3 +41,21 @@ chrome.runtime.onMessage.addListener((msg, sender) => {
     chrome.storage.local.set({ smsError: Date.now() }).then(() => closeSmsTab(true));
   }
 });
+
+// --- KYC: keep the remote KYC link in session storage, then send the tab back to the hiring page ---
+chrome.runtime.onMessage.addListener((msg, sender) => {
+  if (msg.type !== 'kyc-link' || !sender.tab) return;
+  let link;
+  try { link = new URL(msg.link); } catch { return; }
+  if (!/(^|\.)amazon\.(in|com|ca)$/.test(link.hostname) || link.pathname !== '/remoteKYC') return;
+  // onSuccess points back at the hiring site (.ca or .com); default to .ca
+  let site = 'ca';
+  try { if (/\.amazon\.com$/.test(new URL(link.searchParams.get('onSuccess')).hostname)) site = 'com'; } catch {}
+  chrome.storage.session.get('kycLinks').then(({ kycLinks = [] }) => {
+    const rest = kycLinks.filter((k) => k.url !== link.href);
+    return chrome.storage.session.set({ kycLinks: [{ url: link.href, copied: !!msg.copied, at: Date.now() }, ...rest] });
+  }).then(() => chrome.tabs.update(sender.tab.id, { url: SEARCH_URLS[site] }));
+});
+
+// let content scripts (the sidebar panel) read the saved KYC links too
+chrome.storage.session.setAccessLevel({ accessLevel: 'TRUSTED_AND_UNTRUSTED_CONTEXTS' });

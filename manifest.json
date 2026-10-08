@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Jobbot",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "Shows the current step of the Amazon hiring flow (search, job, application, login) plus a live GraphQL inspector.",
   "permissions": [
     "storage"
@@ -68,10 +68,42 @@
         "application.js"
       ],
       "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://hiring.amazon.com/app*",
+        "https://hiring.amazon.ca/app*"
+      ],
+      "js": [
+        "search.js"
+      ],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://*.amazon.in/remoteKYC*",
+        "https://*.amazon.com/remoteKYC*",
+        "https://*.amazon.ca/remoteKYC*"
+      ],
+      "js": [
+        "kyc.js"
+      ],
+      "run_at": "document_idle"
     }
   ],
   "action": {
     "default_popup": "popup.html",
-    "default_title": "Jobbot"
+    "default_title": "Jobbot",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
+      "48": "icons/icon48.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
   }
 }
