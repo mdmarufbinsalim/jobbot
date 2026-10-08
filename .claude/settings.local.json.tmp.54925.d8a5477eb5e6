@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git add *)",
+      "Bash(git commit -q -m 'Add docked side panel dashboard, drop popup, run automation independent of on-page panel, guard against invalidated extension context *)",
+      "Bash(git push *)"
+    ]
+  }
+}

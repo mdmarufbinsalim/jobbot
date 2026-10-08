@@ -59,3 +59,6 @@ chrome.runtime.onMessage.addListener((msg, sender) => {
 
 // let content scripts (the sidebar panel) read the saved KYC links too
 chrome.storage.session.setAccessLevel({ accessLevel: 'TRUSTED_AND_UNTRUSTED_CONTEXTS' });
+
+// Clicking the toolbar icon opens the docked side panel (there is no popup any more).
+chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => {});

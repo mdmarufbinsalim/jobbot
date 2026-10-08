@@ -33,9 +33,9 @@
   }
 
   function tick() {
-    if (!cfg.enabled || !cfg.autoOpen || cfg.paused || !onSearch() || Date.now() - loadedAt < DELAY_MS) return;
+    if (!cfg.autoOpen || cfg.paused || !onSearch() || Date.now() - loadedAt < DELAY_MS) return;
     if (!allDone) {
-      const all = [...document.querySelectorAll('button, [role=button], [role=tab]')].find((b) => visible(b) && /^all$/i.test(textOf(b)));
+      const all = [...document.querySelectorAll('button, [role=button], [role=tab], a, label, span, div')].find((b) => visible(b) && !b.children.length && /^all$/i.test(textOf(b)));
       if (all) { all.click(); allDone = true; }
       return; // the filters re-render after "All"; clear the location on a later tick
     }

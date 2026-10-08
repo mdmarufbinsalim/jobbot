@@ -4,7 +4,8 @@
   "version": "0.7.0",
   "description": "Shows the current step of the Amazon hiring flow (search, job, application, login) plus a live GraphQL inspector.",
   "permissions": [
-    "storage"
+    "storage",
+    "sidePanel"
   ],
   "host_permissions": [
     "https://*.hiring.amazon.ca/*",
@@ -91,9 +92,11 @@
       "run_at": "document_idle"
     }
   ],
+  "side_panel": {
+    "default_path": "sidepanel.html"
+  },
   "action": {
-    "default_popup": "popup.html",
-    "default_title": "Jobbot",
+    "default_title": "Open Jobbot",
     "default_icon": {
       "16": "icons/icon16.png",
       "32": "icons/icon32.png",

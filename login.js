@@ -94,7 +94,7 @@
 
   function tick() {
     if (cfg.paused) return status('Paused');
-    if (!cfg.enabled || !cfg.autoLogin) return status('Auto-login is off');
+    if (!cfg.autoLogin) return status('Auto-login is off');
 
     const codeField = findCodeField();
     if (codeField && !findSmsOption()) return handleCode(codeField); // reading the SMS code needs neither credentials nor attempts

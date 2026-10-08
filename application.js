@@ -92,7 +92,7 @@
 
   function tick() {
     if (cfg.paused) return status(`${route()} · Paused`);
-    if (!cfg.enabled || !cfg.autoOpen) return status(`${route()} · Auto-continue is off`);
+    if (!cfg.autoOpen) return status(`${route()} · Auto-continue is off`);
     if (pending) return;
     const r = route();
 

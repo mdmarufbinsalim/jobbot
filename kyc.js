@@ -17,7 +17,7 @@
   }
 
   chrome.storage.local.get(['enabled', 'paused']).then(async (s) => {
-    if (s.enabled === false || s.paused) return;
+    if (s.paused) return;
     const link = location.href;
     let copied = true;
     try { await copy(link); } catch { copied = false; }

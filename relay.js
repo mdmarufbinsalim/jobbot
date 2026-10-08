@@ -1,6 +1,17 @@
 // Isolated-world bridge: receives GraphQL captures from inject.js, shows the first job and first schedule found plus
 // a GraphQL debug log in an on-page sidebar, and walks the tab search -> job detail -> application page.
 (() => {
+  // After the extension is reloaded or updated, this old copy keeps running in open tabs and every chrome.* call throws
+  // "Extension context invalidated". Detect that, stop everything and take the panel down; a page refresh loads the new copy.
+  const alive = () => { try { return !!chrome.runtime?.id; } catch { return false; } };
+  const timers = [];
+  function every(fn, ms) {
+    const id = setInterval(() => {
+      if (!alive()) { timers.forEach(clearInterval); if (host) host.remove(); return; }
+      fn();
+    }, ms);
+    timers.push(id);
+  }
   const OPERATION = 'searchJobCardsByLocation';
   const ROUTE = '#/jobSearch';
   // Site origin without the "auth." subdomain, so links work on hiring.amazon.ca/.com from every page (incl. the login page).
@@ -18,12 +29,22 @@
   let responses = 0;
   let firstId = null; // first job card of the latest search response
   let schedule = null; // first schedule card of the latest searchScheduleCards response
-  const persist = () => chrome.storage.local.set({ flow: { jobs: [...jobs], responses, firstId, schedule } }).catch(() => {});
+  const persist = () => { try { return chrome.storage.local.set({ flow: { jobs: [...jobs], responses, firstId, schedule } }).catch(() => {}); } catch {} };
 
   // Every captured GraphQL exchange, on any route.
   let entries = [];
   try { entries = JSON.parse(sessionStorage.getItem(LOG_KEY)) || []; } catch {}
-  const persistLog = () => { try { sessionStorage.setItem(LOG_KEY, JSON.stringify(entries)); } catch {} };
+  const persistLog = () => { try { sessionStorage.setItem(LOG_KEY, JSON.stringify(entries)); } catch {} mirrorLog(); };
+  // The side panel (sidepanel.html) reads the log and the live status from session storage; only the visible tab feeds it.
+  let mirrorTimer = null;
+  function mirrorLog() {
+    if (!isTop || document.visibilityState !== 'visible') return;
+    clearTimeout(mirrorTimer);
+    mirrorTimer = setTimeout(() => {
+      if (!alive()) return;
+      chrome.storage.session.set({ gqlLog: entries }).catch(() => chrome.storage.session.set({ gqlLog: entries.slice(-20) }).catch(() => {}));
+    }, 400);
+  }
 
   const OPEN_DELAY_MS = 3000;
   const STALL_MS = 5000;      // no progress for this long -> refresh the page
@@ -97,7 +118,7 @@
       schedule = { ...first, link: applicationLink(first, locale) };
       persist();
       render();
-      if (enabled && autoOpen && onDetail() && first.jobId === hashJobId()) {
+      if (autoOpen && onDetail() && first.jobId === hashJobId()) {
         navigateSoon('Opening application', schedule.link, () => onDetail() && first.jobId === hashJobId());
       }
       return;
@@ -118,7 +139,7 @@
 
     // Next step: jump to the first job from this response, in the same tab.
     const first = cards.find((c) => c?.jobId);
-    if (enabled && autoOpen && onRoute() && first) {
+    if (autoOpen && onRoute() && first) {
       navigateSoon('Opening first job', jobs.get(first.jobId).link, onRoute);
     }
   }
@@ -379,17 +400,46 @@
     if (step === 3) return `Login page · ${window.__jobbotLoginStatus || 'starting auto-login…'}`;
     return 'Not on a known step';
   }
+  function statusInfo() {
+    const cur = currentStep();
+    const secs = navAt ? Math.max(0, Math.ceil((navAt - Date.now()) / 1000)) : 0;
+    return {
+      step: cur,
+      stepName: cur >= 0 ? `${cur + 1}/${STEPS.length} ${STEPS[cur]}` : 'Idle',
+      detail: paused ? 'Paused — press play to continue' : gaveUp ? 'Stuck — press ↻ to start over' : secs ? `${navLabel} in ${secs}s` : stepDetail(cur),
+      chip: paused ? 'paused' : gaveUp ? 'bad' : cur < 0 ? 'idle' : '',
+      chipText: paused ? 'Paused' : gaveUp ? 'Stuck' : cur < 0 ? 'Idle' : 'Running',
+    };
+  }
+
+  let lastLive = '';
+  function publishLive() {
+    if (!isTop || !ready || document.visibilityState !== 'visible') return;
+    const live = { ...statusInfo(), count: entries.length, url: location.href };
+    const text = JSON.stringify(live);
+    if (text === lastLive) return;
+    lastLive = text;
+    if (alive()) chrome.storage.session.set({ live }).catch(() => {});
+  }
+  every(publishLive, 1000);
+  document.addEventListener('visibilitychange', () => { lastLive = ''; publishLive(); mirrorLog(); });
+
+  // Commands from the side panel (it is not part of the page, so it asks the active tab).
+  chrome.runtime.onMessage.addListener((msg) => {
+    if (!isTop || msg?.type !== 'jobbot-cmd') return;
+    if (msg.cmd === 'restart') restart();
+    if (msg.cmd === 'clear-log') { entries = []; persistLog(); render(); }
+  });
+
   function paintSteps() {
     if (!el.seg) return;
-    const cur = currentStep();
+    const info = statusInfo(), cur = info.step;
     el.seg.forEach((d, i) => { d.className = i === cur ? 'now' : i < cur ? 'done' : ''; });
-    el.stepname.textContent = cur >= 0 ? `${cur + 1}/${STEPS.length} ${STEPS[cur]}` : 'Idle';
-    const secs = navAt ? Math.max(0, Math.ceil((navAt - Date.now()) / 1000)) : 0;
-    el.detail.textContent = paused ? 'Paused — press play to continue' : gaveUp ? 'Stuck — press ↻ to start over'
-      : secs ? `${navLabel} in ${secs}s` : stepDetail(cur);
-    el.detail.title = el.detail.textContent;
-    el.chipBox.className = 'chip' + (paused ? ' paused' : gaveUp ? ' bad' : cur < 0 ? ' idle' : '');
-    el.chip.textContent = paused ? 'Paused' : gaveUp ? 'Stuck' : cur < 0 ? 'Idle' : 'Running';
+    el.stepname.textContent = info.stepName;
+    el.detail.textContent = info.detail;
+    el.detail.title = info.detail;
+    el.chipBox.className = 'chip' + (info.chip ? ` ${info.chip}` : '');
+    el.chip.textContent = info.chipText;
   }
 
   function paintPause() {
@@ -406,7 +456,7 @@
     clearTimeout(navTimer); navAt = 0;
     try { sessionStorage.removeItem(REFRESH_KEY); } catch {}
     jobs = new Map(); responses = 0; firstId = null; schedule = null;
-    chrome.storage.local.set({ loginReset: Date.now() }).catch(() => {});
+    if (alive()) chrome.storage.local.set({ loginReset: Date.now() }).catch(() => {});
     const same = location.origin === SITE && location.pathname === '/app' && location.hash.startsWith(ROUTE);
     Promise.resolve(persist()).then(() => (same ? location.reload() : location.assign(`${SITE}/app${ROUTE}`)));
   }
@@ -497,7 +547,7 @@
 
   // True while the page is waiting on something the extension drives (not on you).
   function waitingOnAutomation() {
-    if (!enabled || !autoOpen || navAt) return false;
+    if (!autoOpen || navAt) return false;
     const step = currentStep();
     if (step < 0) return false;
     if (step === 2) return false; // the application pages are driven by application.js and may need you; never auto-refresh them
@@ -519,7 +569,7 @@
     lastProgress = Date.now();
     location.reload();
   }
-  setInterval(watchdog, 1000);
+  every(watchdog, 1000);
 
   // Captures can arrive before the stored flow state has loaded; hold them until it has.
   let ready = false;
@@ -538,7 +588,7 @@
   });
   // SPA route changes made with pushState don't fire hashchange, so also watch the URL.
   let lastHref = location.href;
-  setInterval(() => { if (location.href !== lastHref) { lastHref = location.href; progress(); render(); } }, 500);
+  every(() => { if (location.href !== lastHref) { lastHref = location.href; progress(); render(); } }, 500);
 
   chrome.storage.local.get(['enabled', 'autoOpen', 'autoLogin', 'panelMin', 'paused', 'flow', 'loginPhone', 'loginPin']).then((st) => {
     collapsed = st.panelMin !== false; autoLogin = st.autoLogin !== false;

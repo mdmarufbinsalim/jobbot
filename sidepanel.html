@@ -1,0 +1,60 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Jobbot</title>
+<link rel="stylesheet" href="sidepanel.css">
+<main>
+  <header>
+    <img src="icons/icon48.png" alt="" width="28" height="28">
+    <h1>Jobbot</h1>
+    <span class="chip idle" id="chip"><i></i><span id="chipText">Idle</span></span>
+    <div class="ctl">
+      <button class="ib" id="pause" title="Pause automation"></button>
+      <button class="ib" id="restart" title="Start over from the search page"></button>
+    </div>
+  </header>
+
+  <section class="now">
+    <div class="seg" id="seg"><span></span><span></span><span></span><span></span></div>
+    <div class="stepname" id="stepname">Idle</div>
+    <div class="detail" id="detail">Open a hiring page to begin.</div>
+    <div class="toggles">
+      <label class="tg"><input type="checkbox" id="autoOpen"><span>Auto-continue</span></label>
+      <label class="tg"><input type="checkbox" id="autoLogin"><span>Auto-login</span></label>
+      <label class="tg"><input type="checkbox" id="enabled"><span>On-page panel</span></label>
+    </div>
+  </section>
+
+  <nav class="tabs" role="tablist">
+    <button class="tab on" data-tab="overview" role="tab">Overview</button>
+    <button class="tab" data-tab="log" role="tab">Log <small id="logCount">0</small></button>
+    <button class="tab" data-tab="settings" role="tab">Settings</button>
+  </nav>
+
+  <div class="pane" data-pane="overview">
+    <div class="sec"><h3>Start</h3>
+      <div class="start"><button class="btn primary" data-site="ca">Job search · amazon.ca</button><button class="btn" data-site="com">Job search · amazon.com</button></div>
+    </div>
+    <div class="sec"><h3>First job</h3><div id="job"></div></div>
+    <div class="sec"><h3>First schedule</h3><div id="schedule"></div></div>
+    <div class="sec"><div class="sechead"><h3>Saved KYC links</h3><button class="link" id="kycClear">Clear</button></div><div id="kyc"></div></div>
+  </div>
+
+  <div class="pane" data-pane="log" hidden>
+    <div class="tools"><input type="text" id="filter" placeholder="Filter by operation or text…"><button class="btn" id="logCopy">Copy</button><button class="btn" id="logClear">Clear</button></div>
+    <div id="log" class="list"></div>
+  </div>
+
+  <div class="pane" data-pane="settings" hidden>
+    <div class="sec">
+      <h3>Account</h3>
+      <div class="fields">
+        <label>Phone or email <input id="loginPhone" type="text" autocomplete="off" placeholder="+1…"></label>
+        <label>PIN <input id="loginPin" type="password" autocomplete="off"></label>
+        <label>SMS inbox URL <input id="smsUrl" type="text" autocomplete="off" placeholder="https://temp-number.com/…"></label>
+      </div>
+      <p class="hint">Saved only in this browser's extension storage, never in the code. A public temp-number inbox can be read by anyone.</p>
+    </div>
+  </div>
+</main>
+<script src="sidepanel.js"></script>
