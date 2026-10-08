@@ -1,0 +1,21 @@
+<!doctype html>
+<meta charset="utf-8">
+<link rel="stylesheet" href="popup.css">
+<main>
+  <header>
+    <img src="icons/icon.png" alt="" width="28" height="28">
+    <div><h1>Jobbot</h1><p>Job links and GraphQL inspector</p></div>
+  </header>
+  <label class="row">
+    <span><b>Show panel</b><small id="state">Off</small></span>
+    <input type="checkbox" id="enabled" class="switch">
+  </label>
+  <label class="row">
+    <span><b>Auto-continue</b><small id="openState">On</small></span>
+    <input type="checkbox" id="autoOpen" class="switch">
+  </label>
+  <button data-site="ca">Open job search · amazon.ca</button>
+  <button data-site="com">Open job search · amazon.com</button>
+  <p class="hint">Turn the panel on, then open the job search. A sidebar shows the first job found and every GraphQL response. 3 seconds after each step, the tab moves on (search → job → application).</p>
+</main>
+<script src="popup.js"></script>
