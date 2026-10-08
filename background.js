@@ -1,3 +1,11 @@
+// Local defaults (gitignored defaults.js): fill any setting that has never been saved.
+try { importScripts('defaults.js'); } catch {}
+chrome.storage.local.get(Object.keys(self.JOBBOT_DEFAULTS || {})).then((have) => {
+  const fill = {};
+  for (const [k, v] of Object.entries(self.JOBBOT_DEFAULTS || {})) if (have[k] == null) fill[k] = v;
+  if (Object.keys(fill).length) chrome.storage.local.set(fill);
+});
+
 const SEARCH_URLS = {
   ca: 'https://hiring.amazon.ca/app#/jobSearch',
   com: 'https://hiring.amazon.com/app#/jobSearch',

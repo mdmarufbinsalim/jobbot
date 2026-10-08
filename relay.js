@@ -48,7 +48,6 @@
 
   const OPEN_DELAY_MS = 3000;
   const STALL_MS = 5000;      // no progress for this long -> refresh the page
-  const MAX_REFRESHES = 5;    // per URL, so a dead page can't be hammered forever
   const REFRESH_KEY = 'jobbot-refreshes';
   let lastProgress = Date.now();
   let gaveUp = false;
@@ -563,7 +562,6 @@
     let rec = {};
     try { rec = JSON.parse(sessionStorage.getItem(REFRESH_KEY)) || {}; } catch {}
     if (rec.key !== key) rec = { key, n: 0 };
-    if (rec.n >= MAX_REFRESHES) { gaveUp = true; paintStat(); return; }
     rec.n++;
     try { sessionStorage.setItem(REFRESH_KEY, JSON.stringify(rec)); } catch {}
     lastProgress = Date.now();
