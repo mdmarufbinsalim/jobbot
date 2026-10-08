@@ -12,9 +12,11 @@ the first job and schedule found, saved KYC links, a live GraphQL log and the se
 - Login: fills phone/email and PIN, requests the SMS code, reads it from a temp-number inbox and enters it.
 - Application pages: ticks the consent boxes, answers the referral question, presses the continue buttons.
 - KYC: copies the remote KYC link to the clipboard, saves it in session storage, and returns to the job search.
-- Reloads stalled pages until you pause.
+- Reloads stalled pages until you stop.
 
-Pause / Resume stops everything. **Continuous** (Settings, on by default) starts over after each saved KYC link;
+**Start** closes every open hiring tab, opens the job search for the site chosen in Settings (default `.ca`) and runs the flow.
+**Pause / Resume** temporarily halts and resumes the automation. **Stop** ends the run, leaves your tabs as they are and closes the side panel. Nothing runs until Start is pressed.
+**Continuous** (Settings, on by default) starts over after each saved KYC link;
 turn it off to stop after one successful run.
 
 ## Load it

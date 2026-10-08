@@ -9,7 +9,8 @@
   const BUTTON_TEXT = /^(continue|next|sign in|log in|login|submit|verify|send verification code)$/i;
 
   let phoneTried = false, pinTried = false, sendTried = false, fetchStarted = false, codeTried = false;
-  let cfg = { paused: false, loginPhone: '', loginPin: '', smsUrl: '', smsCode: null };
+  const flags = { running: false, paused: false };
+  let cfg = { paused: true, loginPhone: '', loginPin: '', smsUrl: '', smsCode: null };
 
   const attempts = () => Number(sessionStorage.getItem(ATTEMPTS_KEY) || 0);
   const bump = () => sessionStorage.setItem(ATTEMPTS_KEY, String(attempts() + 1));
@@ -93,7 +94,7 @@
   }
 
   function tick() {
-    if (cfg.paused) return status('Paused');
+    if (cfg.paused) return status(flags.running ? 'Paused' : 'Stopped — press Start in the side panel');
 
     const codeField = findCodeField();
     if (codeField && !findSmsOption()) return handleCode(codeField); // reading the SMS code needs neither credentials nor attempts
@@ -142,15 +143,19 @@
     sessionStorage.removeItem(SMS_KEY);
   }
 
-  chrome.storage.local.get(['paused', 'loginPhone', 'loginPin', 'loginReset', 'smsUrl', 'smsCode']).then((s) => {
+  chrome.storage.local.get(['running', 'paused', 'loginPhone', 'loginPin', 'loginReset', 'smsUrl', 'smsCode']).then((s) => {
     checkReset(s.loginReset);
-    cfg = { paused: !!s.paused, loginPhone: s.loginPhone || '', loginPin: s.loginPin || '', smsUrl: s.smsUrl || '', smsCode: s.smsCode || null };
+    flags.running = s.running === true; flags.paused = !!s.paused;
+    cfg = { paused: flags.running !== true || flags.paused, loginPhone: s.loginPhone || '', loginPin: s.loginPin || '', smsUrl: s.smsUrl || '', smsCode: s.smsCode || null };
     tick();
     setInterval(tick, 700);
   });
   chrome.storage.onChanged.addListener((c, area) => {
     if (area !== 'local') return;
     if ('loginReset' in c) checkReset(c.loginReset.newValue);
-    for (const k of Object.keys(cfg)) if (k in c) cfg[k] = k === 'paused' ? !!c[k].newValue : c[k].newValue || '';
+    if ('running' in c) flags.running = c.running.newValue === true;
+    if ('paused' in c) flags.paused = !!c.paused.newValue;
+    cfg.paused = flags.running !== true || flags.paused;
+    for (const k of Object.keys(cfg)) if (k !== 'paused' && k in c) cfg[k] = c[k].newValue || '';
   });
 })();

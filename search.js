@@ -3,7 +3,8 @@
 (() => {
   const DELAY_MS = 800; // let the page render its pre-filled value first
   const loadedAt = Date.now();
-  let cfg = { paused: false };
+  const flags = { running: false, paused: false };
+  let cfg = { paused: true };
   let allDone = false, clearDone = false;
 
   const onSearch = () => location.hash.startsWith('#/jobSearch');
@@ -45,12 +46,15 @@
     }
   }
 
-  chrome.storage.local.get(['paused']).then((s) => {
-    cfg = { paused: !!s.paused };
+  chrome.storage.local.get(['running', 'paused']).then((s) => {
+    flags.running = s.running === true; flags.paused = !!s.paused;
+    cfg = { paused: flags.running !== true || flags.paused };
     setInterval(tick, 500);
   });
   chrome.storage.onChanged.addListener((c, area) => {
     if (area !== 'local') return;
-    if ('paused' in c) cfg.paused = !!c.paused.newValue;
+    if ('running' in c) flags.running = c.running.newValue === true;
+    if ('paused' in c) flags.paused = !!c.paused.newValue;
+    cfg.paused = flags.running !== true || flags.paused;
   });
 })();

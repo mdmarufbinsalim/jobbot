@@ -33,7 +33,8 @@ chrome.runtime.onMessage.addListener((msg, sender) => {
     try { url = new URL(msg.url); } catch { return; }
     if (url.protocol !== 'https:' || !SMS_HOSTS.has(url.hostname)) return;
     (async () => {
-      if ((await chrome.storage.local.get('paused')).paused) return;
+      const f = await chrome.storage.local.get(['running', 'paused']);
+      if (f.running !== true || f.paused) return;
       await closeSmsTab(false);
       await chrome.storage.local.remove('smsCode');
       await chrome.storage.local.set({ smsJob: { requestedAt: msg.requestedAt, until: Date.now() + SMS_WINDOW_MS } });
@@ -64,7 +65,7 @@ chrome.runtime.onMessage.addListener((msg, sender) => {
     return chrome.storage.session.set({ kycLinks: [{ url: link.href, copied: !!msg.copied, at: Date.now() }, ...rest] });
   }).then(() => chrome.storage.local.get('continuous')).then(({ continuous }) => {
     // Continuous (default): start over from the search page. Otherwise one successful run is enough: stop here.
-    if (continuous === false) return chrome.storage.local.set({ paused: true });
+    if (continuous === false) return chrome.storage.local.set({ running: false });
     return chrome.tabs.update(sender.tab.id, { url: SEARCH_URLS[site] });
   });
 });

@@ -19,7 +19,8 @@
 
   const loadedAt = Date.now();
   const clicked = new Set(); // "route|button text" already pressed, so nothing is clicked twice on one page
-  let cfg = { paused: false };
+  const flags = { running: false, paused: false };
+  let cfg = { paused: true };
   let pending = false; // a delayed click is scheduled
 
   function status(text) {
@@ -91,7 +92,7 @@
   }
 
   function tick() {
-    if (cfg.paused) return status(`${route()} · Paused`);
+    if (cfg.paused) return status(`${route()} · ${flags.running ? 'Paused' : 'Stopped'}`);
     if (pending) return;
     const r = route();
 
@@ -115,13 +116,16 @@
     setTimeout(() => { pending = false; btn.click(); status(`${r} · ${label} clicked`); }, CLICK_DELAY_MS);
   }
 
-  chrome.storage.local.get(['paused']).then((s) => {
-    cfg = { paused: !!s.paused };
+  chrome.storage.local.get(['running', 'paused']).then((s) => {
+    flags.running = s.running === true; flags.paused = !!s.paused;
+    cfg = { paused: flags.running !== true || flags.paused };
     tick();
     setInterval(tick, 700);
   });
   chrome.storage.onChanged.addListener((c, area) => {
     if (area !== 'local') return;
-    if ('paused' in c) cfg.paused = !!c.paused.newValue;
+    if ('running' in c) flags.running = c.running.newValue === true;
+    if ('paused' in c) flags.paused = !!c.paused.newValue;
+    cfg.paused = flags.running !== true || flags.paused;
   });
 })();

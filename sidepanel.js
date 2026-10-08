@@ -1,9 +1,11 @@
 // Side panel dashboard. Reads what the hiring-page scripts publish: flow (storage.local), live status, GraphQL log and
 // saved KYC links (storage.session), and sends commands to the active tab.
 const $ = (id) => document.getElementById(id);
+const SEARCH_URLS = { ca: 'https://hiring.amazon.ca/app#/jobSearch', com: 'https://hiring.amazon.com/app#/jobSearch' };
 const h = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
 const ICON = {
   pause: '<svg viewBox="0 0 24 24"><path d="M8 5v14M16 5v14" /></svg>',
+  stop: '<svg viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2" fill="currentColor"/></svg>',
   play: '<svg viewBox="0 0 24 24"><path d="M7 4.5v15l12-7.5z" fill="currentColor" /></svg>',
   restart: '<svg viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.6-5.9M20 4v5h-5" /></svg>',
 };
@@ -14,7 +16,7 @@ $('restart').innerHTML = `${ICON.restart}Restart`;
 
 let st = {};        // chrome.storage.local values
 let live = null;    // status published by the active hiring tab
-let log = [];
+// let log = [];
 let kyc = [];
 let filter = '';
 
@@ -73,65 +75,74 @@ function kycCard(k) {
   return d;
 }
 
+// GraphQL log: disabled for now (UI commented out in sidepanel.html)
 // --- GraphQL log ---
-const pretty = (v) => (typeof v === 'string' ? v : JSON.stringify(v, null, 2));
-const opName = (e) => e.request?.operationName || e.request?.[0]?.operationName || Object.keys(e.response?.data || {})[0] || 'unknown';
-const isBad = (e) => e.status >= 400 || !!e.response?.errors;
-const TOKEN = /("(?:\\.|[^"\\])*")(\s*:)?|\b(true|false)\b|\bnull\b|-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?/g;
-function highlight(text) {
-  const frag = document.createDocumentFragment();
-  if (text.length > 200000) { frag.append(text); return frag; }
-  const put = (str, cls) => { if (!str) return; if (!cls) return frag.append(str); frag.append(h('span', cls, str)); };
-  let last = 0, m;
-  TOKEN.lastIndex = 0;
-  while ((m = TOKEN.exec(text))) {
-    put(text.slice(last, m.index));
-    if (m[1]) { put(m[1], m[2] ? 'k' : 's'); put(m[2]); }
-    else if (m[3]) put(m[0], 'b');
-    else if (m[0] === 'null') put(m[0], 'z');
-    else put(m[0], 'n');
-    last = TOKEN.lastIndex;
-  }
-  put(text.slice(last));
-  return frag;
-}
-function section(label, val) {
-  const wrap = h('div', 'section'), head = h('div', 'shead');
-  const text = pretty(val);
-  head.append(h('span', '', label), copyBtn(text));
-  const pre = h('pre'); pre.append(highlight(text));
-  wrap.append(head, pre);
-  return wrap;
-}
-function entryRow(e, wasOpen) {
-  const d = h('details'); d.dataset.id = `${e.t}:${e.url}:${opName(e)}`; d.open = wasOpen;
-  const sm = h('summary');
-  sm.append(h('span', 'op', opName(e)), h('span', 'time', new Date(e.t).toLocaleTimeString()), h('span', 'badge' + (isBad(e) ? ' bad' : ''), e.status));
-  d.append(sm);
-  const fill = () => { if (!d.querySelector('.section')) d.append(section('Request', e.request), section('Response', e.response)); };
-  if (d.open) fill();
-  d.addEventListener('toggle', () => d.open && fill());
-  return d;
-}
-const visibleLog = () => log.filter((e) => !filter || (opName(e) + ' ' + pretty(e.response)).toLowerCase().includes(filter));
+// const pretty = (v) => (typeof v === 'string' ? v : JSON.stringify(v, null, 2));
+// const opName = (e) => e.request?.operationName || e.request?.[0]?.operationName || Object.keys(e.response?.data || {})[0] || 'unknown';
+// const isBad = (e) => e.status >= 400 || !!e.response?.errors;
+// const TOKEN = /("(?:\\.|[^"\\])*")(\s*:)?|\b(true|false)\b|\bnull\b|-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?/g;
+// function highlight(text) {
+//   const frag = document.createDocumentFragment();
+//   if (text.length > 200000) { frag.append(text); return frag; }
+//   const put = (str, cls) => { if (!str) return; if (!cls) return frag.append(str); frag.append(h('span', cls, str)); };
+//   let last = 0, m;
+//   TOKEN.lastIndex = 0;
+//   while ((m = TOKEN.exec(text))) {
+//     put(text.slice(last, m.index));
+//     if (m[1]) { put(m[1], m[2] ? 'k' : 's'); put(m[2]); }
+//     else if (m[3]) put(m[0], 'b');
+//     else if (m[0] === 'null') put(m[0], 'z');
+//     else put(m[0], 'n');
+//     last = TOKEN.lastIndex;
+//   }
+//   put(text.slice(last));
+//   return frag;
+// }
+// function section(label, val) {
+//   const wrap = h('div', 'section'), head = h('div', 'shead');
+//   const text = pretty(val);
+//   head.append(h('span', '', label), copyBtn(text));
+//   const pre = h('pre'); pre.append(highlight(text));
+//   wrap.append(head, pre);
+//   return wrap;
+// }
+// function entryRow(e, wasOpen) {
+//   const d = h('details'); d.dataset.id = `${e.t}:${e.url}:${opName(e)}`; d.open = wasOpen;
+//   const sm = h('summary');
+//   sm.append(h('span', 'op', opName(e)), h('span', 'time', new Date(e.t).toLocaleTimeString()), h('span', 'badge' + (isBad(e) ? ' bad' : ''), e.status));
+//   d.append(sm);
+//   const fill = () => { if (!d.querySelector('.section')) d.append(section('Request', e.request), section('Response', e.response)); };
+//   if (d.open) fill();
+//   d.addEventListener('toggle', () => d.open && fill());
+//   return d;
+// }
+// const visibleLog = () => log.filter((e) => !filter || (opName(e) + ' ' + pretty(e.response)).toLowerCase().includes(filter));
 
 // --- painting ---
 function paintLive() {
-  const l = live || { step: -1, stepName: 'Idle', detail: 'Open a hiring page to begin.', chip: 'idle', chipText: 'Idle' };
-  const paused = !!st.paused;
+  const running = st.running === true, paused = running && !!st.paused;
+  const l = running && live ? live : { step: -1, stepName: 'Stopped', detail: 'Press Start to open the job search and begin.', chip: 'idle', chipText: 'Stopped' };
   $('chip').className = 'chip' + (paused ? ' paused' : l.chip ? ` ${l.chip}` : '');
-  $('chipText').textContent = paused ? 'Paused' : l.chipText;
+  $('chipText').textContent = !running ? 'Stopped' : paused ? 'Paused' : l.chipText;
   [...$('steps').children].forEach((li, i) => { li.className = i === l.step ? 'now' : i < l.step ? 'done' : ''; });
   $('stepname').textContent = l.stepName.replace(/^\d\/\d\s*/, '') || 'Idle';
   $('detail').textContent = paused ? 'Paused — press Resume to continue.' : l.detail;
+  $('start').innerHTML = `${ICON.play}Start`;
   $('pause').innerHTML = paused ? `${ICON.play}Resume` : `${ICON.pause}Pause`;
   $('pause').title = paused ? 'Resume automation' : 'Pause automation';
   $('pause').classList.toggle('go', paused);
-  try { $('where').textContent = live?.url ? new URL(live.url).host : 'Amazon hiring assistant'; } catch {}
+  $('stop').innerHTML = `${ICON.stop}Stop`;
+  $('start').hidden = running;
+  $('pause').hidden = !running;
+  $('stop').hidden = !running;
+  $('restart').hidden = !running;
+  try { $('where').textContent = running && live?.url ? new URL(live.url).host : 'Amazon hiring assistant'; } catch {}
 }
 
 function paintSettings() {
   $('continuous').checked = st.continuous !== false;
+  const site = st.site === 'com' ? 'com' : 'ca';
+  for (const r of document.querySelectorAll('[name=site]')) r.checked = r.value === site;
   for (const id of ['loginPhone', 'loginPin', 'smsUrl']) if (document.activeElement !== $(id)) $(id).value = st[id] || '';
 }
 
@@ -144,22 +155,23 @@ function paintOverview() {
   $('kycClear').hidden = !kyc.length;
 }
 
-function paintLog() {
-  $('logCount').textContent = log.length;
-  const open = new Set([...$('log').querySelectorAll('details[open]')].map((d) => d.dataset.id));
-  const shown = visibleLog();
-  $('log').replaceChildren(...(shown.length
-    ? shown.slice().reverse().map((e) => entryRow(e, open.has(`${e.t}:${e.url}:${opName(e)}`)))
-    : [empty(log.length ? 'No matches' : 'No responses yet', log.length ? 'Try a different filter.' : 'GraphQL responses appear here as pages load.')]));
-}
+// GraphQL log: disabled for now (UI commented out in sidepanel.html)
+// function paintLog() {
+//   $('logCount').textContent = log.length;
+//   const open = new Set([...$('log').querySelectorAll('details[open]')].map((d) => d.dataset.id));
+//   const shown = visibleLog();
+//   $('log').replaceChildren(...(shown.length
+//     ? shown.slice().reverse().map((e) => entryRow(e, open.has(`${e.t}:${e.url}:${opName(e)}`)))
+//     : [empty(log.length ? 'No matches' : 'No responses yet', log.length ? 'Try a different filter.' : 'GraphQL responses appear here as pages load.')]));
+// }
 
-const paintAll = () => { paintLive(); paintSettings(); paintOverview(); paintLog(); };
+const paintAll = () => { paintLive(); paintSettings(); paintOverview(); };
 
 Promise.all([
   chrome.storage.local.get(null),
-  chrome.storage.session.get(['live', 'gqlLog', 'kycLinks']),
+  chrome.storage.session.get(['live', 'kycLinks']),
 ]).then(([l, s]) => {
-  st = l; live = s.live || null; log = s.gqlLog || []; kyc = s.kycLinks || [];
+  st = l; live = s.live || null; kyc = s.kycLinks || [];
   paintAll();
 });
 
@@ -169,22 +181,49 @@ chrome.storage.onChanged.addListener((c, area) => {
     paintLive(); paintSettings(); if ('flow' in c) paintOverview();
   } else if (area === 'session') {
     if (c.live) { live = c.live.newValue || null; paintLive(); }
-    if (c.gqlLog) { log = c.gqlLog.newValue || []; paintLog(); }
+    // if (c.gqlLog) { log = c.gqlLog.newValue || []; paintLog(); }
     if (c.kycLinks) { kyc = c.kycLinks.newValue || []; paintOverview(); }
   }
 });
 
 // --- controls ---
+const HIRING_TABS = ['https://*.hiring.amazon.ca/*', 'https://*.hiring.amazon.com/*'];
+// Closes every hiring tab. A window that would be left empty gets a blank tab first, so it isn't closed with them.
+async function closeHiringTabs() {
+  const tabs = await chrome.tabs.query({ url: HIRING_TABS });
+  const byWindow = new Map();
+  for (const t of tabs) byWindow.set(t.windowId, (byWindow.get(t.windowId) || 0) + 1);
+  for (const [windowId, n] of byWindow) {
+    const all = await chrome.tabs.query({ windowId });
+    if (all.length === n) await chrome.tabs.create({ windowId, active: true });
+  }
+  if (tabs.length) await chrome.tabs.remove(tabs.map((t) => t.id)).catch(() => {});
+}
+
+$('start').onclick = async () => {
+  await closeHiringTabs();
+  await chrome.storage.local.remove(['flow', 'smsCode', 'smsError']);
+  await chrome.storage.session.remove(['live']);
+  await chrome.storage.local.set({ running: true, paused: false, loginReset: Date.now() });
+  chrome.tabs.create({ url: SEARCH_URLS[st.site === 'com' ? 'com' : 'ca'], active: true });
+};
 $('pause').onclick = () => chrome.storage.local.set({ paused: !st.paused });
+// Stop: automation off, tabs stay as they are, side panel closes.
+$('stop').onclick = async () => {
+  await chrome.storage.local.set({ running: false, paused: false });
+  await chrome.storage.session.remove('live');
+  const win = await chrome.windows.getCurrent();
+  try { await chrome.sidePanel.close({ windowId: win.id }); } catch { window.close(); }
+};
 async function toActiveTab(cmd) {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   if (tab?.id != null) chrome.tabs.sendMessage(tab.id, { type: 'jobbot-cmd', cmd }).catch(() => {});
 }
 $('restart').onclick = () => toActiveTab('restart');
-$('logClear').onclick = () => { log = []; chrome.storage.session.set({ gqlLog: [] }); toActiveTab('clear-log'); paintLog(); };
-$('logCopy').onclick = () => copy(JSON.stringify(visibleLog(), (k, v) =>
-  k !== 'query' && typeof v === 'string' && v.length > 300 ? `${v.slice(0, 300)}… [${v.length} chars]` : v, 2));
-$('filter').oninput = (e) => { filter = e.target.value.toLowerCase(); paintLog(); };
+// $('logClear').onclick = () => { log = []; chrome.storage.session.set({ gqlLog: [] }); toActiveTab('clear-log'); paintLog(); };
+// $('logCopy').onclick = () => copy(JSON.stringify(visibleLog(), (k, v) =>
+//   k !== 'query' && typeof v === 'string' && v.length > 300 ? `${v.slice(0, 300)}… [${v.length} chars]` : v, 2));
+// $('filter').oninput = (e) => { filter = e.target.value.toLowerCase(); paintLog(); };
 $('kycClear').onclick = () => chrome.storage.session.remove('kycLinks');
 for (const id of ['continuous']) $(id).onchange = (e) => chrome.storage.local.set({ [id]: e.target.checked });
 let savedTimer;
@@ -203,5 +242,4 @@ for (const t of document.querySelectorAll('[data-tab]')) t.onclick = () => {
   for (const p of document.querySelectorAll('[data-pane]')) p.hidden = p.dataset.pane !== t.dataset.tab;
 };
 
-const SEARCH_URLS = { ca: 'https://hiring.amazon.ca/app#/jobSearch', com: 'https://hiring.amazon.com/app#/jobSearch' };
-for (const b of document.querySelectorAll('[data-site]')) b.onclick = () => chrome.tabs.create({ url: SEARCH_URLS[b.dataset.site] });
+for (const r of document.querySelectorAll('[name=site]')) r.onchange = () => chrome.storage.local.set({ site: r.value });

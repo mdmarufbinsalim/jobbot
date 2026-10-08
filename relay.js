@@ -42,7 +42,8 @@
     clearTimeout(mirrorTimer);
     mirrorTimer = setTimeout(() => {
       if (!alive()) return;
-      chrome.storage.session.set({ gqlLog: entries }).catch(() => chrome.storage.session.set({ gqlLog: entries.slice(-20) }).catch(() => {}));
+      // GraphQL log in the side panel is disabled for now:
+      // chrome.storage.session.set({ gqlLog: entries }).catch(() => chrome.storage.session.set({ gqlLog: entries.slice(-20) }).catch(() => {}));
     }, 400);
   }
 
@@ -53,8 +54,9 @@
   const progress = () => { lastProgress = Date.now(); };
   let navTimer = null, navAt = 0, navLabel = '';
   let secrets = []; // saved login phone/PIN: scrubbed from anything we capture, display or copy
-  let paused = false;
-  let autoOpen = true; // automation runs unless paused
+  let running = false, userPaused = false; // nothing runs until Start is pressed in the side panel
+  let paused = true;   // not running, or paused
+  let autoOpen = false; // automation runs only while started
 
   const onRoute = () => location.hash.startsWith(ROUTE);
   const onDetail = () => location.hash.startsWith('#/jobDetail');
@@ -156,9 +158,9 @@
     return {
       step: cur,
       stepName: cur >= 0 ? `${cur + 1}/${STEPS.length} ${STEPS[cur]}` : 'Idle',
-      detail: paused ? 'Paused — press play to continue' : secs ? `${navLabel} in ${secs}s` : stepDetail(cur),
-      chip: paused ? 'paused' : cur < 0 ? 'idle' : '',
-      chipText: paused ? 'Paused' : cur < 0 ? 'Idle' : 'Running',
+      detail: paused ? (running ? 'Paused — press Resume in the side panel' : 'Stopped — press Start in the side panel') : secs ? `${navLabel} in ${secs}s` : stepDetail(cur),
+      chip: paused ? (running ? 'paused' : 'idle') : cur < 0 ? 'idle' : '',
+      chipText: paused ? (running ? 'Paused' : 'Stopped') : cur < 0 ? 'Idle' : 'Running',
     };
   }
 
@@ -202,7 +204,7 @@
     return true;
   }
 
-  // Stalled pages are reloaded until you pause automation.
+  // Stalled pages are reloaded until you stop it.
   function watchdog() {
     if (!ready || !isTop) return;
     if (!waitingOnAutomation() || Date.now() - lastProgress <= STALL_MS) return;
@@ -226,9 +228,9 @@
   let lastHref = location.href;
   every(() => { if (location.href !== lastHref) { lastHref = location.href; progress(); } }, 500);
 
-  chrome.storage.local.get(['paused', 'flow', 'loginPhone', 'loginPin']).then((st) => {
+  chrome.storage.local.get(['running', 'paused', 'flow', 'loginPhone', 'loginPin']).then((st) => {
     secrets = [st.loginPhone, st.loginPin].filter((v) => v && v.length >= 4);
-    paused = !!st.paused; autoOpen = !paused;
+    running = st.running === true; userPaused = !!st.paused; paused = !running || userPaused; autoOpen = !paused;
     const f = st.flow;
     if (f) { jobs = new Map(f.jobs || []); responses = f.responses || 0; firstId = f.firstId || null; schedule = f.schedule || null; }
     ready = true;
@@ -237,7 +239,10 @@
   });
   chrome.storage.onChanged.addListener((c, area) => {
     if (area !== 'local') return;
-    if ('paused' in c) { paused = !!c.paused.newValue; if (paused) { clearTimeout(navTimer); navAt = 0; } }
+    if ('running' in c) running = c.running.newValue === true;
+    if ('paused' in c) userPaused = !!c.paused.newValue;
+    paused = !running || userPaused;
+    if (paused) { clearTimeout(navTimer); navAt = 0; }
     autoOpen = !paused;
     if ('loginPhone' in c || 'loginPin' in c) chrome.storage.local.get(['loginPhone', 'loginPin']).then((st) => { secrets = [st.loginPhone, st.loginPin].filter((v) => v && v.length >= 4); });
   });

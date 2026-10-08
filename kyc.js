@@ -16,8 +16,8 @@
     });
   }
 
-  chrome.storage.local.get(['paused']).then(async (s) => {
-    if (s.paused) return;
+  chrome.storage.local.get(['running', 'paused']).then(async (s) => {
+    if (s.running !== true || s.paused) return;
     const link = location.href;
     let copied = true;
     try { await copy(link); } catch { copied = false; }
