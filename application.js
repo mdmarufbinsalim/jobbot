@@ -1,7 +1,7 @@
-// Drives the Amazon application pages (/application/...). Right now: the "pre-consent" page, where it clicks Next.
+// Drives the Amazon application pages (/application/...). Right now: the "pre-consent" page, where it clicks Create Application.
 (() => {
-  const NEXT_TEXT = /^next$/i;
-  const clicked = new Set(); // routes where Next was already pressed, so it is never clicked twice on one page
+  const BUTTON_TEXT = /^create (an )?application$/i;
+  const clicked = new Set(); // routes where the button was already pressed, so it is never clicked twice on one page
 
   let cfg = { enabled: false, autoOpen: true };
 
@@ -12,24 +12,24 @@
 
   const route = () => location.hash.split('?')[0] || '#/';
   const visible = (e) => !!(e && (e.offsetWidth || e.offsetHeight || e.getClientRects().length));
-  const findNext = () =>
+  const findButton = () =>
     [...document.querySelectorAll('button, input[type=submit], [role=button]')]
       .filter(visible)
-      .find((b) => NEXT_TEXT.test((b.textContent || b.value || '').trim()));
+      .find((b) => BUTTON_TEXT.test((b.textContent || b.value || '').trim()));
 
   function tick() {
     if (!cfg.enabled || !cfg.autoOpen) return status(`${route()} · Auto-continue is off`);
     const r = route();
     if (!r.startsWith('#/pre-consent')) return status(`${r} · no automation for this page yet`);
-    if (clicked.has(r)) return status(`${r} · Next clicked`);
+    if (clicked.has(r)) return status(`${r} · Create Application clicked`);
 
-    const btn = findNext();
-    if (!btn) return status(`${r} · waiting for the Next button…`);
-    if (btn.disabled || btn.getAttribute('aria-disabled') === 'true') return status(`${r} · Next is disabled (a required choice may be missing)`);
+    const btn = findButton();
+    if (!btn) return status(`${r} · waiting for the Create Application button…`);
+    if (btn.disabled || btn.getAttribute('aria-disabled') === 'true') return status(`${r} · Create Application is disabled (a required choice may be missing)`);
 
     clicked.add(r);
-    status(`${r} · clicking Next…`);
-    setTimeout(() => { btn.click(); status(`${r} · Next clicked`); }, 600);
+    status(`${r} · clicking Create Application…`);
+    setTimeout(() => { btn.click(); status(`${r} · Create Application clicked`); }, 600);
   }
 
   chrome.storage.local.get(['enabled', 'autoOpen']).then((s) => {
