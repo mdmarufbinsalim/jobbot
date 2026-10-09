@@ -10,7 +10,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 //   replaced    a different challenge is showing
 //   unresolved  still the same challenge and nothing was said
 export function classify(before, after) {
-  if (!after?.visible) return 'accepted';
+  if (!after?.visible || after.solved) return 'accepted';
   if (after.expired) return 'expired';
   if (after.error) return 'rejected';
   if (before?.fingerprint && after.fingerprint !== before.fingerprint) return 'replaced';

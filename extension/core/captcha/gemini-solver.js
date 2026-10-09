@@ -12,6 +12,7 @@ import { hub } from './hub.js';
 import LOCAL_KEY from './local-key.js'; // a key kept on this machine only (never committed)
 
 const MAX_ATTEMPTS = 3;
+const RETRY_WAIT_MS = 5000; // after a wrong answer, before capturing and trying again
 // Google retires and rate-limits free models often, so a busy or retired model falls through to the next one.
 export const DEFAULT_MODEL = 'gemini-3.5-flash';
 const FALLBACK_MODELS = ['gemini-flash-latest', 'gemini-3.1-flash-lite'];
@@ -80,7 +81,15 @@ async function solve(ctx, key, model) {
       const result = await verify(driver, cap.page);
       log(`captcha: ${result}`);
       if (result === 'accepted') { hub.finish('solved', 'Solved. Resuming the bot.', null); return true; }
-      hub.update({ message: { rejected: 'Rejected. Trying again…', expired: 'Expired. Trying the new image…', replaced: 'A new challenge appeared. Trying it…', unresolved: 'No change on the page. Trying again…' }[result] });
+      await wait(800, signal); // a success animation can look like "a new challenge" for a moment: look once more before retrying
+      const again = await probe(driver).catch(() => null);
+      if (again && (!again.visible || again.solved)) { hub.finish('solved', 'Solved. Resuming the bot.', null); return true; }
+      if (attempt < MAX_ATTEMPTS) { // a wrong answer: let the page settle, then capture the new puzzle
+        const why = { rejected: 'Rejected', expired: 'Expired', replaced: 'A new challenge appeared', unresolved: 'No change on the page' }[result];
+        hub.update({ message: `${why}. Waiting ${RETRY_WAIT_MS / 1000} s before trying again…` });
+        log(`captcha: waiting ${RETRY_WAIT_MS / 1000}s before the next attempt`);
+        await wait(RETRY_WAIT_MS, signal);
+      }
     }
   } catch (e) {
     if (signal?.aborted) { if (id && hub.view()?.id === id) hub.finish('closed', 'Cancelled.'); return false; }

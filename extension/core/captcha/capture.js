@@ -11,7 +11,7 @@ export async function probe(driver) {
 // Throws when there is nothing to capture (no challenge on the page, or the host cannot take a screenshot right now).
 export async function capture(driver) {
   const before = await probe(driver);
-  if (!before?.visible) throw new Error('no tile challenge is showing');
+  if (!before?.visible || before.solved) throw new Error('no tile challenge is showing'); // gone, or already showing "That is correct"
   const image = await driver.screenshot();
   if (!image) throw new Error('no screenshot available (the tab must be visible)');
   const imageSize = pngSize(image);

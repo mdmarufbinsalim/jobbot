@@ -17,6 +17,9 @@ export function pageFn({ op, arg }) {
   // The login page's "Select your Country" control: a native <select> (even a visually hidden or restyled one, or one inside
   // a shadow root), or a custom dropdown (the first combobox / button / readonly input after the label text).
   const deepQ = (sel, node = document) => [...node.querySelectorAll(sel), ...[...node.querySelectorAll('*')].filter((h) => h.shadowRoot).flatMap((h) => deepQ(sel, h.shadowRoot))];
+  // The modal's own success text ("That is correct"), read through shadow roots. While it shows, the challenge is over.
+  const SOLVED = /\bthat is correct\b|\bthat's correct\b|verification (is )?complete|\bsuccess(ful)?\b/i;
+  const modalSolved = (node) => SOLVED.test([node.innerText || '', ...deepQ('*', node).filter((h) => h.shadowRoot).flatMap((h) => [...h.shadowRoot.children].filter((c) => !/^(STYLE|LINK|SCRIPT)$/.test(c.tagName)).map((c) => c.innerText || ''))].join('\n'));
   const countryControl = () => {
     const matches = (x) => /country/i.test(`${labelOf(x)} ${x.getAttribute('data-test-id') || ''} ${x.closest('label')?.textContent || ''}`);
     const sels = deepQ('select').filter(matches);
@@ -37,7 +40,7 @@ export function pageFn({ op, arg }) {
     // The page always has an empty .captcha-modal (computed display: block, 0x0); a real captcha sets an inline
     // display: block or takes up space.
     captchaVisible: () => [...document.querySelectorAll('.captcha-modal')].some((e) =>
-      e.style.display === 'block' || (getComputedStyle(e).display === 'block' && e.offsetWidth > 0 && e.offsetHeight > 0)),
+      (e.style.display === 'block' || (getComputedStyle(e).display === 'block' && e.offsetWidth > 0 && e.offsetHeight > 0)) && !modalSolved(e)),
 
     // Everything the tile-challenge modules need to know about the page, in viewport CSS pixels. Reports hashes, not the
     // challenge's own URLs or text.
@@ -53,8 +56,9 @@ export function pageFn({ op, arg }) {
       const humanPage = /confirm you are human/i.test(document.body.innerText) && !begin;
       const root = [...document.querySelectorAll('.captcha-modal')].find((e) =>
         e.style.display === 'block' || (getComputedStyle(e).display === 'block' && e.offsetWidth > 0 && e.offsetHeight > 0)) || (humanPage ? document.body : null);
-      const out = { visible: !!root, viewport, url: location.origin + location.pathname, region: null, confirm: null, error: false, expired: false, fingerprint: '', prompt: '', view: null };
+      const out = { visible: !!root, solved: false, viewport, url: location.origin + location.pathname, region: null, confirm: null, error: false, expired: false, fingerprint: '', prompt: '', view: null };
       if (!root) return out;
+      if (root !== document.body && modalSolved(root)) { out.solved = true; return out; } // "That is correct": nothing left to solve
       const rect = (r) => ({ x: r.left / viewport.width, y: r.top / viewport.height, w: r.width / viewport.width, h: r.height / viewport.height });
       const all = deepAll(root, 'img, canvas, svg').filter(visible).map((e) => ({ e, r: e.getBoundingClientRect() })).filter((m) => m.r.width >= 40 && m.r.height >= 40);
       // a grid of tiles = the most common image size (at least 4 of them); the region is their bounding box

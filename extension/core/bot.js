@@ -29,6 +29,8 @@ export const TIMING = {
 };
 const T = TIMING;
 export const STEPS = ['Login', 'Search', 'Job', 'Application'];
+// Disabled for now: starting every run at the login page. The login step only runs when Amazon redirects to it.
+// const START_AT_LOGIN = true;
 
 export class Bot {
   constructor({ driver, host }) {
@@ -200,8 +202,9 @@ export class Bot {
   async restart() {
     this.nav = null; this.clearRefreshes(); this.jobs.clear(); this.firstId = null; this.schedule = null;
     this.resetLogin(); this.paused = false; this._site = null; this.holdUntil = 0;
-    this.loginFirst = true;
-    await this.go(this.loginUrl);
+    // this.loginFirst = true;
+    // await this.go(this.loginUrl);
+    await this.go(this.searchUrl);
     this.changed();
   }
   // Open the solver again after a person left the captcha to the page (the panel's "Try again").
@@ -216,8 +219,9 @@ export class Bot {
     this.driver.on('navigated', () => { this.resetDoc(); this.progress(); this.changed(); });
     this.driver.on('gql', (e) => { try { this.onGql(e); } catch (err) { this.log(`gql error: ${err.message}`); } });
     this.driver.on('closed', () => { this.stopped = true; });
-    this.loginFirst = true;
-    if (navigate) await this.go(this.loginUrl);
+    // this.loginFirst = true;
+    // if (navigate) await this.go(this.loginUrl);
+    if (navigate) await this.go(this.searchUrl);
     let lastStep = -2, sawLogin = false;
     while (!this.stopped) {
       try {
@@ -229,6 +233,12 @@ export class Bot {
           await this.host.onLoggedIn?.();
           this.log('logged in');
           break;
+        }
+        // Back on the login page after the search / job / application pages (the application link can send a logged-out
+        // session there again): a fresh login, so none of the earlier "phone done / PIN done / code sent" flags still apply.
+        if (step >= 0) {
+          if (step === 0 && this.prevStep > 0) { this.resetLogin(); this.log('login page again: starting the login over'); }
+          this.prevStep = step;
         }
         if (step !== lastStep) {
           lastStep = step;
@@ -261,15 +271,15 @@ export class Bot {
 
     const u = this.url();
     if (/\/remoteKYC/.test(u.pathname) && /amazon\.(in|com|ca)$/.test(u.hostname)) return this.kyc(u);
-    if (this.step() > 0) this.loginFirst = false; // past the login: the normal flow
+    // if (this.step() > 0) this.loginFirst = false; // (login-first start, disabled)
     switch (this.step()) {
       case 0: return this.loginTick();
       case 1: return this.searchTick();
       case 2: return this.jobTick();
       case 3: return this.applicationTick();
       default:
-        // the login page sends an already logged-in browser straight on to the hiring site: carry on with the search from there
-        if (this.loginFirst && /^https:\/\/hiring\.amazon\./.test(this.driver.url())) { this.loginFirst = false; await this.go(this.searchUrl); } else
+        // (nothing to do for the login-first start while it is disabled)
+        // (login-first start, disabled) if (this.loginFirst && /^https:\/\/hiring\.amazon\./.test(this.driver.url())) { this.loginFirst = false; await this.go(this.searchUrl); } else
         if (!/^https:\/\/(auth\.)?hiring\.amazon\./.test(this.driver.url())) await this.go(this.searchUrl);
         else this.status('Not on a known step');
     }
