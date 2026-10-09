@@ -1,39 +1,22 @@
-# Jobbot CLI
+# jobbot CLI
 
-Local-only Playwright port of the Jobbot extension (`../extension`, which stays as it is). Same flow: search → job → application → login (SMS code from the temp-number inbox) → saved KYC link, with the same 10s / 5-try refresh rule per step.
+Controls a Jobbot server (`../server`) over HTTP. Needs Node 20+, nothing to install: `npm link` here, or `node bin/jobbot.js …`.
 
-## Run locally
-    npm i && npx playwright install chromium
-    npm run login                              # once: log in (automatic, you only handle a captcha) and save the session
-    npm start                                  # = node bin/jobbot.js run: reuses the saved session, screenshots to ./shots, KYC links to ./out
-    node bin/jobbot.js run --headless          # no window. Amazon currently answers headless browsers with a CloudFront 403, so use the visible window
-    node bin/jobbot.js run --site com --once   # other site, stop after one KYC link
+    jobbot start            start the bot (starts the background server first if it is not running)
+    jobbot status           bot state, step progress, first job and shift (with links), KYC links, settings, recent log
+    jobbot watch            live: every status change and log line
+    jobbot logs [-f]        server log
+    jobbot pause | resume | restart | stop
+    jobbot shot [file]      screenshot of the bot's tab
+    jobbot kyc              saved KYC links
+    jobbot config --site com --once --phone … --pin … --sms-url …
+    jobbot session import state.json
+    jobbot login [--headed] log in once (headless) and save the session
 
-Keys while running: `p` pause · `r` resume/retry · `s` screenshot · `n` restart · `q` quit.
-Screenshots (default `./shots`, `--no-shots` to turn off) are saved on every step change, captcha, stuck state and KYC link, or on demand with `s`.
-KYC links are appended to `<out>/kyc-links.txt`.
+    jobbot up [--headed] [--port 8787] [--host 127.0.0.1]    start the server in the background (pid/log in ~/.config/jobbot/)
+    jobbot down                                               stop it
+    jobbot ps                                                 server up/down, pid, and what the bot is doing
+    jobbot serve                                              run the server in the foreground
 
-## Saved session
-`login` and `run` share `~/.config/jobbot/state.json` (cookies and storage, mode 600, never committed). `run` refreshes it every minute and on exit; delete it to force a fresh login.
-
-## Account details
-`JOBBOT_PHONE`, `JOBBOT_PIN`, `JOBBOT_SMS_URL`, or `config.local.json` (gitignored):
-    { "loginPhone": "+1…", "loginPin": "…", "smsUrl": "https://temp-number.com/…" }
-
-## Captcha
-For now the bot takes a screenshot and waits. To plug in a solver service, pass `--captcha-solver ./solver.js`, a module whose default export is
-`{ async solve({ page, screenshot, log }) { …; return true; } }`; returning true lets the flow continue.
-
-## Server API (`jobbot serve`)
-`Authorization: Bearer <token>` on everything except `GET /health`. Default `127.0.0.1:8787`, headless (`--headed` to show the window).
-
-| Route | |
-|---|---|
-| `GET /status` | running, paused, live step/detail, first job/schedule, KYC links, recent log |
-| `POST /start` `/pause` `/resume` `/restart` `/stop` | controls |
-| `GET /screenshot` | PNG of the bot's tab right now |
-| `PUT /config` | `{ site, continuous, loginPhone, loginPin, smsUrl }` |
-| `PUT /session` | `{ cookies, origins }` (Playwright storage state; only Amazon hiring cookies are kept) |
-| `GET /kyc` | saved KYC links |
-
-The flow logic lives in `../extension/core/`; this folder only provides the Playwright driver, the HTTP server and the CLI.
+Remote server: `jobbot --url https://host --token SECRET status`, or set `JOBBOT_URL` / `JOBBOT_TOKEN`. Locally the token is read
+from `~/.config/jobbot/token`, which the server creates on first start.

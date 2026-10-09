@@ -1,0 +1,22 @@
+{
+  "name": "jobbot-server",
+  "version": "0.1.0",
+  "description": "Jobbot server: Playwright runner + HTTP API for the Amazon hiring flow",
+  "type": "module",
+  "bin": {
+    "jobbot-server": "bin/server.js"
+  },
+  "scripts": {
+    "login": "node bin/server.js login",
+    "serve": "node bin/server.js serve",
+    "start": "node bin/server.js run"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "playwright": "^1.55.0",
+    "playwright-extra": "^4.3.6",
+    "puppeteer-extra-plugin-stealth": "^2.11.2"
+  }
+}
