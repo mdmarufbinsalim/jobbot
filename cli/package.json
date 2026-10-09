@@ -3,9 +3,19 @@
   "version": "0.1.0",
   "description": "Headless Playwright port of the Jobbot extension for hiring.amazon.ca / .com",
   "type": "module",
-  "bin": { "jobbot": "bin/jobbot.js" },
-  "scripts": { "login": "node bin/jobbot.js login",
-    "start": "node bin/jobbot.js run" },
-  "engines": { "node": ">=20" },
-  "dependencies": { "playwright": "^1.55.0" }
+  "bin": {
+    "jobbot": "bin/jobbot.js"
+  },
+  "scripts": {
+    "login": "node bin/jobbot.js login",
+    "start": "node bin/jobbot.js run"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "playwright": "^1.55.0",
+    "playwright-extra": "^4.3.6",
+    "puppeteer-extra-plugin-stealth": "^2.11.2"
+  }
 }

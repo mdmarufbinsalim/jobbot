@@ -1,7 +1,10 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { chromium } from 'playwright';
+import { chromium } from 'playwright-extra';
+import StealthPlugin from 'puppeteer-extra-plugin-stealth';
+
+chromium.use(StealthPlugin());
 
 export const DEFAULT_STATE = path.join(os.homedir(), '.config/jobbot/state.json');
 
