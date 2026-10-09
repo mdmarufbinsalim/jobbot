@@ -1,0 +1,51 @@
+name: CI/CD
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - run: npm run check
+      - name: Package the extension
+        run: cd extension && zip -qr ../jobbot-extension.zip . -x 'defaults.json' -x '.git*'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: jobbot-extension
+          path: jobbot-extension.zip
+
+  deploy:
+    needs: check
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    concurrency: { group: deploy-production, cancel-in-progress: false }   # never two deploys at once
+    steps:
+      - uses: actions/checkout@v4
+      - name: SSH setup
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' "${{ secrets.DEPLOY_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+      - name: Upload release
+        env:
+          TARGET: ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}
+        run: |
+          SSH="ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes"
+          tar czf - server cli deploy extension/core | $SSH $TARGET "set -e; mkdir -p /opt/jobbot/releases/${GITHUB_SHA}; tar xzf - -C /opt/jobbot/releases/${GITHUB_SHA}"
+      - name: Activate release (install, switch, restart, health check, roll back on failure)
+        env:
+          TARGET: ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}
+        run: |
+          ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes $TARGET \
+            "bash /opt/jobbot/releases/${GITHUB_SHA}/deploy/release.sh ${GITHUB_SHA}"
