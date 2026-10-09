@@ -237,7 +237,7 @@
   let captchaShown = false;
   function captchaWatch() {
     if (!ready) return;
-    const shown = [...document.querySelectorAll('.captcha-modal')].some((e) => getComputedStyle(e).display === 'block');
+    const shown = [...document.querySelectorAll('.captcha-modal')].some((e) => e.style.display === 'block' || (getComputedStyle(e).display === 'block' && e.offsetWidth > 0 && e.offsetHeight > 0)); // the page always has an empty one (0x0)
     if (shown && !captchaShown && running && !userPaused) {
       captcha = true;
       chrome.storage.local.set({ paused: true }).catch(() => {});

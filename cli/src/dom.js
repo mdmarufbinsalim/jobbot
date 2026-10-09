@@ -9,7 +9,8 @@ export const INIT_SCRIPT = () => {
 };
 
 export const captchaVisible = () =>
-  [...document.querySelectorAll('.captcha-modal')].some((e) => getComputedStyle(e).display === 'block');
+  // The page always has an empty .captcha-modal (computed display: block, 0x0); a real captcha sets an inline display: block or takes up space.
+  [...document.querySelectorAll('.captcha-modal')].some((e) => e.style.display === 'block' || (getComputedStyle(e).display === 'block' && e.offsetWidth > 0 && e.offsetHeight > 0));
 
 // --- search page ---
 export const clickAllTab = () => {
@@ -88,8 +89,6 @@ export const clickButton = (text) => {
 export { BUTTONS };
 
 // --- login (auth.hiring.*) ---
-const LOGIN_BUTTON = /^(continue|next|sign in|log in|login|submit|verify|send verification code)$/i;
-
 export const loginInspect = () => {
   const { visible } = window.__jb;
   const labelOf = (i) => [i.getAttribute('aria-label'), i.placeholder, i.name, i.id, ...[...(i.labels || [])].map((l) => l.textContent)].join(' ');
@@ -138,6 +137,7 @@ export const chooseSms = () => {
 
 export const pressLoginButton = () => {
   const { visible } = window.__jb;
+  const LOGIN_BUTTON = /^(continue|next|sign in|log in|login|submit|verify|send verification code)$/i;
   const b = [...document.querySelectorAll('button, input[type=submit], [role=button]')].filter(visible)
     .find((x) => LOGIN_BUTTON.test((x.textContent || x.value || '').trim()) && !x.disabled);
   if (b) b.click();
