@@ -30,21 +30,20 @@ Bot
   login [--headed]       log in once (headless; a captcha needs --headed so you can solve it) and save the session
 
 Server (the process that owns the browser; runs in the background)
-  up [--headed] [--port 8787] [--host 127.0.0.1]    start it     (alias: server start)
+  up [--headed] [--port 8787]                       start it     (alias: server start)
   down                                              stop it      (alias: server stop)
   ps                                                is it up, which pid, what it is doing   (alias: server status)
   serve                                             run it in the foreground
 
 Options
   --url <http://host:port>   server to control (default http://127.0.0.1:8787, or $JOBBOT_URL)
-  --token <secret>           only for a server that was started with a token ($JOBBOT_TOKEN)
 `;
 
 const { values: v, positionals: pos } = parseArgs({
   allowPositionals: true,
   options: {
-    url: { type: 'string' }, token: { type: 'string' }, json: { type: 'boolean', default: false },
-    headed: { type: 'boolean', default: false }, port: { type: 'string', default: '8787' }, host: { type: 'string', default: '127.0.0.1' },
+    url: { type: 'string' }, json: { type: 'boolean', default: false },
+    headed: { type: 'boolean', default: false }, port: { type: 'string', default: '8787' },
     f: { type: 'boolean', short: 'f', default: false }, site: { type: 'string' }, once: { type: 'boolean', default: false }, continuous: { type: 'boolean', default: false },
     phone: { type: 'string' }, pin: { type: 'string' }, 'sms-url': { type: 'string' }, help: { type: 'boolean', short: 'h', default: false },
   },
@@ -54,9 +53,7 @@ if (cmd === 'server') { cmd = { start: 'up', stop: 'down', status: 'ps', logs: '
 if (v.help || !cmd) { console.log(HELP); process.exit(cmd || v.help ? 0 : 1); }
 
 // `up --port/--host` starts a server elsewhere than the default, so talk to that one in the same command
-const BASE = (v.url || process.env.JOBBOT_URL || (pos[0] === 'up' || pos[0] === 'serve' ? `http://${v.host === '0.0.0.0' ? '127.0.0.1' : v.host}:${v.port}` : DEFAULT_URL)).replace(/\/+$/, '');
-const token = () => v.token || process.env.JOBBOT_TOKEN || '';   // optional; only a server listening beyond localhost needs one
-const authHeader = () => (token() ? { Authorization: `Bearer ${token()}` } : {});
+const BASE = (v.url || process.env.JOBBOT_URL || (pos[0] === 'up' || pos[0] === 'serve' ? `http://127.0.0.1:${v.port}` : DEFAULT_URL)).replace(/\/+$/, '');
 const die = (m) => { console.error(m); process.exit(1); };
 
 async function call(route, method = 'GET', body, raw = false) {
@@ -64,12 +61,11 @@ async function call(route, method = 'GET', body, raw = false) {
   try {
     r = await fetch(BASE + route, {
       method,
-      headers: { ...authHeader(), ...(body ? { 'Content-Type': 'application/json' } : {}) },
+      headers: body ? { 'Content-Type': 'application/json' } : {},
       body: body ? JSON.stringify(body) : undefined,
       signal: AbortSignal.timeout(15000),
     });
   } catch { die(`Cannot reach the server at ${BASE}. Start it with: jobbot server start`); }
-  if (r.status === 401) die('This server needs a token: pass --token <secret> or set JOBBOT_TOKEN.');
   if (!r.ok) die(`Server error: ${(await r.json().catch(() => ({}))).error || r.status}`);
   return raw ? Buffer.from(await r.arrayBuffer()) : r.json();
 }
@@ -113,8 +109,7 @@ async function serverStart() {
   if (await healthy()) return console.log(`Server already running at ${BASE}`);
   fs.mkdirSync(CONF, { recursive: true });
   const out = fs.openSync(LOG_FILE, 'a');
-  const args = [SERVER_BIN, 'serve', '--port', v.port, '--host', v.host, ...(v.headed ? ['--headed'] : [])];
-  if (v.token) args.push('--token', v.token);
+  const args = [SERVER_BIN, 'serve', '--port', v.port, ...(v.headed ? ['--headed'] : [])];
   const child = spawn(process.execPath, args, { detached: true, stdio: ['ignore', out, out] });
   child.unref();
   fs.writeFileSync(PID_FILE, String(child.pid));
@@ -127,7 +122,7 @@ async function serverStart() {
 }
 
 async function serverStop() {
-  if (await healthy()) await fetch(`${BASE}/stop`, { method: 'POST', headers: authHeader() }).catch(() => {});
+  if (await healthy()) await fetch(`${BASE}/stop`, { method: 'POST' }).catch(() => {});
   const pid = readPid();
   if (pid && alive(pid)) {
     process.kill(pid, 'SIGTERM');
@@ -149,7 +144,7 @@ const run = {
     console.log(`server   ${up ? 'up' : 'down'}  ${BASE}${pid && alive(pid) ? `  pid ${pid}` : ''}`);
     if (up) console.log(`\n${summary(await call('/status'))}`);
   },
-  async serve() { return new Promise((r) => spawn(process.execPath, [SERVER_BIN, 'serve', '--port', v.port, '--host', v.host, ...(v.headed ? ['--headed'] : [])], { stdio: 'inherit' }).on('exit', r)); },
+  async serve() { return new Promise((r) => spawn(process.execPath, [SERVER_BIN, 'serve', '--port', v.port, ...(v.headed ? ['--headed'] : [])], { stdio: 'inherit' }).on('exit', r)); },
   async logs() {
     if (!v.url && fs.existsSync(LOG_FILE)) {
       const t = spawn('tail', ['-n', '60', ...(v.f ? ['-f'] : []), LOG_FILE], { stdio: 'inherit' });

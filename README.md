@@ -4,7 +4,7 @@ Amazon hiring assistant for `hiring.amazon.ca` / `.com`: search → job → appl
 
 | Folder | What it is |
 |---|---|
-| `server/` | Owns the browser (Playwright). Runs the flow and exposes an HTTP API (bearer token). Headless by default. |
+| `server/` | Owns the browser (Playwright). Runs the flow and exposes an HTTP API. Headless by default. |
 | `cli/` | `jobbot …` commands that **control** a server: start it in the background, start/stop/pause the bot, status, logs, screenshots. No dependencies. |
 | `extension/` | Chrome side panel. Runs the bot in your own Chrome, **or controls a server** (Remote), and can sync your Chrome login to it. |
 
@@ -23,11 +23,11 @@ Change a rule once, there.
     jobbot down                     # stop the server
 
 Extension: `chrome://extensions` → Developer mode → Load unpacked → `extension/`. Settings → **Run on** → *Remote server*
-(the URL is preset to `http://127.0.0.1:8787`; no token needed); log in on the site in your Chrome and press **Sync session**.
+(the URL is preset to `http://127.0.0.1:8787`); log in on the site in your Chrome and press **Sync session**.
 
-**Auth:** no token on localhost. The server then only answers the CLI/curl and `chrome-extension://` pages (never websites, never a foreign
-Host header), and it refuses to listen on a non-local address unless you pass `--token`. The CLI's server URL defaults to
-`http://127.0.0.1:8787` (`--url` or `JOBBOT_URL` to change it).
+**No token anywhere.** The server listens on `127.0.0.1` only and only answers the CLI/curl and `chrome-extension://` pages (never websites,
+never a foreign Host header). To reach one on another machine use an SSH tunnel (`ssh -L 8787:127.0.0.1:8787 host`). The server URL is built in as
+`http://127.0.0.1:8787` (`--url` / `JOBBOT_URL` for the CLI, Settings in the extension).
 
 **Where to run the server:** on a machine with a normal home or office connection. Amazon's CloudFront answers requests from datacenter
 IPs (a VPS) with a 403 "Request blocked" for `hiring.amazon.*`, while the same code works from a home connection. Run `jobbot up` on your own machine,

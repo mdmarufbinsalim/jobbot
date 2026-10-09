@@ -143,11 +143,10 @@ function paintSettings() {
   for (const r of document.querySelectorAll('[name=mode]')) r.checked = r.value === mode;
   $('remoteFields').hidden = mode !== 'remote';
   if (document.activeElement !== $('serverUrl')) $('serverUrl').value = st.serverUrl || 'http://127.0.0.1:8787';
-  if (document.activeElement !== $('serverToken')) $('serverToken').value = st.serverToken || '';
   $('continuous').checked = st.continuous !== false;
   const site = st.site === 'com' ? 'com' : 'ca';
   for (const r of document.querySelectorAll('[name=mode]')) r.onchange = () => chrome.storage.local.set({ mode: r.value });
-for (const id of ['serverUrl', 'serverToken']) $(id).oninput = (e) => chrome.storage.local.set({ [id]: e.target.value.trim() });
+$('serverUrl').oninput = (e) => chrome.storage.local.set({ serverUrl: e.target.value.trim() });
 async function remoteAction(cmd, busy) {
   $('remoteMsg').textContent = busy;
   const r = await ctl(cmd);
@@ -247,7 +246,7 @@ for (const t of document.querySelectorAll('[data-tab]')) t.onclick = () => {
 };
 
 for (const r of document.querySelectorAll('[name=mode]')) r.onchange = () => chrome.storage.local.set({ mode: r.value });
-for (const id of ['serverUrl', 'serverToken']) $(id).oninput = (e) => chrome.storage.local.set({ [id]: e.target.value.trim() });
+$('serverUrl').oninput = (e) => chrome.storage.local.set({ serverUrl: e.target.value.trim() });
 async function remoteAction(cmd, busy) {
   $('remoteMsg').textContent = busy;
   const r = await ctl(cmd);

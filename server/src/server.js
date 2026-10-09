@@ -1,23 +1,20 @@
 import http from 'node:http';
-import crypto from 'node:crypto';
 
 const MAX_BODY = 2 * 1024 * 1024;
-const sha = (s) => crypto.createHash('sha256').update(String(s)).digest();
 
-// HTTP control plane for a running bot. No token is needed on localhost; instead it only answers
+// HTTP control plane for a running bot. There is no token: the server listens on 127.0.0.1 only and only answers
 //  - requests without an Origin header (the CLI, curl) or from a chrome-extension:// page, never from a website, and
 //  - requests whose Host is localhost / 127.0.0.1 (blocks DNS rebinding).
-// When listening on a non-local address a bearer token is mandatory (the caller refuses to start without one).
-export function startServer({ runtime, token, host, port, say }) {
+// To reach it from another machine, use an SSH tunnel (ssh -L 8787:127.0.0.1:8787 host).
+export function startServer({ runtime, host, port, say }) {
   const { controller, settings } = runtime;
-  const want = token ? sha(token) : null;
   const LOCAL_HOST = /^(127\.0\.0\.1|localhost|\[::1\])(:\d+)?$/i;
 
   const send = (res, code, body, type = 'application/json', origin = '') => {
     res.writeHead(code, {
       'Content-Type': type,
       ...(origin ? { 'Access-Control-Allow-Origin': origin, Vary: 'Origin' } : {}),
-      'Access-Control-Allow-Headers': 'Authorization, Content-Type',
+      'Access-Control-Allow-Headers': 'Content-Type',
       'Access-Control-Allow-Methods': 'GET, POST, PUT, OPTIONS',
       'Cache-Control': 'no-store',
     });
@@ -52,17 +49,10 @@ export function startServer({ runtime, token, host, port, say }) {
     const reply = (code, body, type) => send(res, code, body, type, okOrigin);
     try {
       if (origin && !okOrigin) return reply(403, { error: 'forbidden origin' });
-      if (!want && !LOCAL_HOST.test(req.headers.host || '')) return reply(403, { error: 'forbidden host' });
+      if (!LOCAL_HOST.test(req.headers.host || '')) return reply(403, { error: 'forbidden host' });
       if (req.method === 'OPTIONS') return reply(204, '');
       const route = `${req.method} ${new URL(req.url, 'http://x').pathname}`;
       if (route === 'GET /health') return reply(200, { ok: true });
-      if (want) {
-        const given = /^Bearer (.+)$/.exec(req.headers.authorization || '')?.[1];
-        if (!given || !crypto.timingSafeEqual(sha(given), want)) {
-          await new Promise((r) => setTimeout(r, 400)); // slow down guessing
-          return reply(401, { error: 'unauthorized' });
-        }
-      }
       if (route === 'GET /screenshot') {
         const data = await controller.screenshot();
         if (!data) return reply(404, { error: 'no screenshot yet' });

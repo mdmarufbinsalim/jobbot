@@ -109,8 +109,7 @@ chrome.runtime.onMessage.addListener((msg, sender) => {
 async function api(path, method = 'GET', body) {
   const r = await fetch(serverUrl() + path, {
     method,
-    // the token is optional: only a server listening beyond localhost asks for one
-    headers: { ...(store.serverToken ? { Authorization: `Bearer ${store.serverToken}` } : {}), ...(body ? { 'Content-Type': 'application/json' } : {}) },
+    headers: body ? { 'Content-Type': 'application/json' } : {},
     body: body ? JSON.stringify(body) : undefined,
     signal: AbortSignal.timeout(10000),
   });
@@ -164,7 +163,7 @@ const commands = {
   async test() {
     const health = await fetch(`${serverUrl()}/health`, { signal: AbortSignal.timeout(6000) }).then((r) => r.json()).catch(() => null);
     if (!health?.ok) throw new Error(`No jobbot server at ${serverUrl()}. Start it with: jobbot up`);
-    const s = await apiJson('/status'); // also proves the token (if one is needed) is right
+    const s = await apiJson('/status');
     return { message: `Connected to ${serverUrl()}. The bot is ${s.running ? 'running' : 'idle'}.` };
   },
   // Sends this browser's login for the hiring sites (and the account settings) to the server, so it starts logged in.

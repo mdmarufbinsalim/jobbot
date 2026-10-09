@@ -2,8 +2,6 @@
 import { parseArgs } from 'node:util';
 import path from 'node:path';
 import fs from 'node:fs';
-import os from 'node:os';
-import crypto from 'node:crypto';
 import readline from 'node:readline';
 import { DEFAULT_STATE } from '../src/browser.js';
 import { createRuntime } from '../src/runtime.js';
@@ -30,9 +28,7 @@ Options
   --no-interactive       Do not read keyboard commands
 
 serve only
-  --host <addr>          Interface to listen on (default 127.0.0.1; 0.0.0.0 to accept remote connections)
-  --port <n>             Port (default 8787)
-  --token <secret>       API token. Not needed on localhost; required with --host 0.0.0.0 (or JOBBOT_TOKEN)
+  --port <n>              Port (default 8787). Always listens on 127.0.0.1; use an SSH tunnel to reach it from elsewhere
 
 Keyboard while running (run/login):  p pause · r resume · s screenshot · n restart · q quit
 
@@ -46,10 +42,11 @@ const { values: v, positionals } = parseArgs({
     headed: { type: 'boolean', default: false }, once: { type: 'boolean', default: false },
     state: { type: 'string', default: DEFAULT_STATE }, shots: { type: 'string' }, 'no-shots': { type: 'boolean', default: false },
     out: { type: 'string', default: 'out' }, 'captcha-solver': { type: 'string' }, 'no-interactive': { type: 'boolean', default: false },
-    host: { type: 'string', default: '127.0.0.1' }, port: { type: 'string', default: '8787' }, token: { type: 'string' },
+    port: { type: 'string', default: '8787' },
     help: { type: 'boolean', short: 'h', default: false },
   },
 });
+const HOST = '127.0.0.1'; // localhost only: there is no token
 const cmd = positionals[0] || 'run';
 if (v.help || !['run', 'login', 'serve'].includes(cmd)) { console.log(HELP); process.exit(v.help ? 0 : 1); }
 if (v.site && !['ca', 'com'].includes(v.site)) { console.error('--site must be ca or com'); process.exit(1); }
@@ -68,15 +65,9 @@ const runtime = createRuntime({
 const { controller, say } = runtime;
 
 if (cmd === 'serve') {
-  const token = v.token || process.env.JOBBOT_TOKEN || ''; // optional: only needed when listening beyond localhost
-  const local = ['127.0.0.1', 'localhost', '::1'].includes(v.host);
-  if (!local && !token) { console.error(`Refusing to listen on ${v.host} without a token. Pass --token <secret> (or JOBBOT_TOKEN), or use the default 127.0.0.1.`); process.exit(1); }
   const port = Number(v.port);
-  await startServer({ runtime, token, host: v.host, port, say });
-  say(`API listening on http://${v.host}:${port} (browser: ${v.headed ? 'headed' : 'headless'})`);
-  // never print a token that already exists (service logs end up in journald); a brand-new one is shown once
-  say(token ? 'auth: bearer token required' : 'auth: none needed (localhost only; websites are rejected)');
-  if (v.host !== '127.0.0.1' && v.host !== 'localhost') say('warning: this is plain HTTP; put it behind TLS or an SSH tunnel before exposing it');
+  await startServer({ runtime, host: HOST, port, say });
+  say(`API listening on http://${HOST}:${port} (browser: ${v.headed ? 'headed' : 'headless'}); no token, localhost only`);
   say('waiting for Start from the extension (or: curl -X POST http://host:port/start)');
   const quit = async () => { await controller.stop(); process.exit(0); };
   process.on('SIGINT', quit); process.on('SIGTERM', quit);
