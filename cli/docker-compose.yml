@@ -1,0 +1,11 @@
+services:
+  jobbot:
+    build: .
+    init: true                 # reaps Chromium child processes
+    ipc: host                  # Chromium needs more shared memory than Docker's 64MB default
+    volumes:
+      - ./data:/data           # KYC links, screenshots and the browser profile
+      - ./config.local.json:/app/config.local.json:ro
+    command: ["run", "--out", "/data/out", "--shots", "/data/shots", "--profile", "/data/profile", "--no-interactive"]
+    # Other examples:  command: ["run", "--site", "com", "--once", "--out", "/data/out", "--shots", "/data/shots", "--no-interactive"]
+    #                  command: ["serve", "--host", "0.0.0.0", "--port", "9222"]   (+ ports: ["9222:9222"]) for a remote browser
