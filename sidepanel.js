@@ -123,10 +123,10 @@ function paintLive() {
   const running = st.running === true, paused = running && !!st.paused;
   const l = running && live ? live : { step: -1, stepName: 'Stopped', detail: 'Press Start to open the job search and begin.', chip: 'idle', chipText: 'Stopped' };
   $('chip').className = 'chip' + (paused ? ' paused' : l.chip ? ` ${l.chip}` : '');
-  $('chipText').textContent = !running ? 'Stopped' : paused ? 'Paused' : l.chipText;
+  $('chipText').textContent = !running ? 'Stopped' : paused ? (l.captcha ? 'Captcha' : 'Paused') : l.chipText;
   [...$('steps').children].forEach((li, i) => { li.className = i === l.step ? 'now' : i < l.step ? 'done' : ''; });
   $('stepname').textContent = l.stepName.replace(/^\d\/\d\s*/, '') || 'Idle';
-  $('detail').textContent = paused ? 'Paused — press Resume to continue.' : l.detail;
+  $('detail').textContent = paused ? (l.captcha ? l.detail : 'Paused — press Resume to continue.') : l.detail;
   $('start').innerHTML = `${ICON.play}Start`;
   $('pause').innerHTML = paused ? `${ICON.play}Resume` : `${ICON.pause}Pause`;
   $('pause').title = paused ? 'Resume automation' : 'Pause automation';

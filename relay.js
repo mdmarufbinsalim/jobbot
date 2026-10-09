@@ -56,6 +56,7 @@
   const progress = () => { lastProgress = Date.now(); };
   let navTimer = null, navAt = 0, navLabel = '';
   let stuck = false;
+  let captcha = false; // a visible .captcha-modal was seen: everything is paused until you resume
   let secrets = []; // saved login phone/PIN: scrubbed from anything we capture, display or copy
   let running = false, userPaused = false; // nothing runs until Start is pressed in the side panel
   let paused = true;   // not running, or paused
@@ -169,10 +170,11 @@
     const secs = navAt ? Math.max(0, Math.ceil((navAt - Date.now()) / 1000)) : 0;
     return {
       step: cur,
+      captcha: captcha && paused,
       stepName: cur >= 0 ? `${cur + 1}/${STEPS.length} ${STEPS[cur]}` : 'Idle',
-      detail: paused ? (running ? 'Paused — press Resume in the side panel' : 'Stopped — press Start in the side panel') : stuck ? `Stuck: page did not load after ${MAX_REFRESHES} refreshes` : secs ? `${navLabel} in ${secs}s` : stepDetail(cur),
+      detail: captcha && paused ? 'Captcha is being asked — paused. Solve it, then press Resume in the side panel' : paused ? (running ? 'Paused — press Resume in the side panel' : 'Stopped — press Start in the side panel') : stuck ? `Stuck: page did not load after ${MAX_REFRESHES} refreshes` : secs ? `${navLabel} in ${secs}s` : stepDetail(cur),
       chip: paused ? (running ? 'paused' : 'idle') : cur < 0 ? 'idle' : '',
-      chipText: paused ? (running ? 'Paused' : 'Stopped') : cur < 0 ? 'Idle' : 'Running',
+      chipText: captcha && paused ? 'Captcha' : paused ? (running ? 'Paused' : 'Stopped') : cur < 0 ? 'Idle' : 'Running',
     };
   }
 
@@ -184,7 +186,7 @@
     const text = JSON.stringify(live);
     if (text === lastLive) return;
     lastLive = text;
-    chrome.storage.session.set({ live }).catch(() => {});
+    try { chrome.storage.session.set({ live }).catch(() => {}); } catch {} // can throw synchronously while the extension restarts
   }
   every(publishLive, 1000);
   document.addEventListener('visibilitychange', () => { lastLive = ''; publishLive(); mirrorLog(); });
@@ -229,6 +231,22 @@
     location.reload();
   }
   every(watchdog, 1000);
+
+  // A shown captcha modal pauses every step (all scripts follow the shared `paused` flag). It triggers when the modal appears,
+  // so pressing Resume while it is still on screen doesn't pause again.
+  let captchaShown = false;
+  function captchaWatch() {
+    if (!ready) return;
+    const shown = [...document.querySelectorAll('.captcha-modal')].some((e) => getComputedStyle(e).display === 'block');
+    if (shown && !captchaShown && running && !userPaused) {
+      captcha = true;
+      chrome.storage.local.set({ paused: true }).catch(() => {});
+    }
+    if (!shown) captcha = false;
+    captchaShown = shown;
+    if (!paused) captcha = false;
+  }
+  every(captchaWatch, 500);
 
   // Captures can arrive before the stored flow state has loaded; hold them until it has.
   let ready = false;
