@@ -1,7 +1,6 @@
 // Side panel dashboard. Reads what the hiring-page scripts publish: flow (storage.local), live status, GraphQL log and
 // saved KYC links (storage.session), and sends commands to the active tab.
 const $ = (id) => document.getElementById(id);
-const SEARCH_URLS = { ca: 'https://hiring.amazon.ca/app#/jobSearch', com: 'https://hiring.amazon.com/app#/jobSearch' };
 const h = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
 const ICON = {
   pause: '<svg viewBox="0 0 24 24"><path d="M8 5v14M16 5v14" /></svg>',
@@ -140,9 +139,31 @@ function paintLive() {
 }
 
 function paintSettings() {
+  const mode = st.mode === 'remote' ? 'remote' : 'local';
+  for (const r of document.querySelectorAll('[name=mode]')) r.checked = r.value === mode;
+  $('remoteFields').hidden = mode !== 'remote';
+  for (const id of ['serverUrl', 'serverToken']) if (document.activeElement !== $(id)) $(id).value = st[id] || '';
   $('continuous').checked = st.continuous !== false;
   const site = st.site === 'com' ? 'com' : 'ca';
-  for (const r of document.querySelectorAll('[name=site]')) r.checked = r.value === site;
+  for (const r of document.querySelectorAll('[name=mode]')) r.onchange = () => chrome.storage.local.set({ mode: r.value });
+for (const id of ['serverUrl', 'serverToken']) $(id).oninput = (e) => chrome.storage.local.set({ [id]: e.target.value.trim() });
+async function remoteAction(cmd, busy) {
+  $('remoteMsg').textContent = busy;
+  const r = await ctl(cmd);
+  $('remoteMsg').textContent = r.ok ? r.message : (r.error || 'Failed');
+}
+$('testServer').onclick = () => remoteAction('test', 'Connecting…');
+$('syncSession').onclick = () => remoteAction('syncSession', 'Syncing the session…');
+$('shotBtn').onclick = async () => {
+  const r = await ctl('screenshot');
+  if (!r.dataUrl) return toast(r.error || 'No screenshot (the tab must be visible)');
+  const img = h('img'); img.src = r.dataUrl; img.alt = 'Screenshot of the bot tab';
+  $('shot').replaceChildren(img);
+};
+// Remote mode: the server is polled while the panel is open (the worker may be asleep otherwise).
+setInterval(() => { if (st.mode === 'remote') chrome.runtime.sendMessage({ type: 'ctl', cmd: 'status' }).catch(() => {}); }, 2000);
+
+for (const r of document.querySelectorAll('[name=site]')) r.checked = r.value === site;
   for (const id of ['loginPhone', 'loginPin', 'smsUrl']) if (document.activeElement !== $(id)) $(id).value = st[id] || '';
 }
 
@@ -186,45 +207,27 @@ chrome.storage.onChanged.addListener((c, area) => {
   }
 });
 
-// --- controls ---
-const HIRING_TABS = ['https://*.hiring.amazon.ca/*', 'https://*.hiring.amazon.com/*'];
-// Closes every hiring tab. A window that would be left empty gets a blank tab first, so it isn't closed with them.
-async function closeHiringTabs() {
-  const tabs = await chrome.tabs.query({ url: HIRING_TABS });
-  const byWindow = new Map();
-  for (const t of tabs) byWindow.set(t.windowId, (byWindow.get(t.windowId) || 0) + 1);
-  for (const [windowId, n] of byWindow) {
-    const all = await chrome.tabs.query({ windowId });
-    if (all.length === n) await chrome.tabs.create({ windowId, active: true });
-  }
-  if (tabs.length) await chrome.tabs.remove(tabs.map((t) => t.id)).catch(() => {});
+// --- controls: everything goes through the background worker (local run or remote server) ---
+function ctl(cmd) {
+  return chrome.runtime.sendMessage({ type: 'ctl', cmd }).then((r) => {
+    if (r && r.ok === false) toast(r.error || 'Failed');
+    return r || {};
+  }).catch((e) => { toast(e.message); return {}; });
 }
-
-$('start').onclick = async () => {
-  await closeHiringTabs();
-  await chrome.storage.local.remove(['flow', 'smsCode', 'smsError']);
-  await chrome.storage.session.remove(['live']);
-  await chrome.storage.local.set({ running: true, paused: false, loginReset: Date.now() });
-  chrome.tabs.create({ url: SEARCH_URLS[st.site === 'com' ? 'com' : 'ca'], active: true });
-};
-$('pause').onclick = () => chrome.storage.local.set({ paused: !st.paused });
+$('start').onclick = () => ctl('start');
+$('pause').onclick = () => ctl(st.paused ? 'resume' : 'pause');
 // Stop: automation off, tabs stay as they are, side panel closes.
 $('stop').onclick = async () => {
-  await chrome.storage.local.set({ running: false, paused: false });
-  await chrome.storage.session.remove('live');
+  await ctl('stop');
   const win = await chrome.windows.getCurrent();
   try { await chrome.sidePanel.close({ windowId: win.id }); } catch { window.close(); }
 };
-async function toActiveTab(cmd) {
-  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-  if (tab?.id != null) chrome.tabs.sendMessage(tab.id, { type: 'jobbot-cmd', cmd }).catch(() => {});
-}
-$('restart').onclick = () => toActiveTab('restart');
+$('restart').onclick = () => ctl('restart');
 // $('logClear').onclick = () => { log = []; chrome.storage.session.set({ gqlLog: [] }); toActiveTab('clear-log'); paintLog(); };
 // $('logCopy').onclick = () => copy(JSON.stringify(visibleLog(), (k, v) =>
 //   k !== 'query' && typeof v === 'string' && v.length > 300 ? `${v.slice(0, 300)}… [${v.length} chars]` : v, 2));
 // $('filter').oninput = (e) => { filter = e.target.value.toLowerCase(); paintLog(); };
-$('kycClear').onclick = () => chrome.storage.session.remove('kycLinks');
+$('kycClear').onclick = () => ctl('clearKyc');
 for (const id of ['continuous']) $(id).onchange = (e) => chrome.storage.local.set({ [id]: e.target.checked });
 let savedTimer;
 for (const id of ['loginPhone', 'loginPin', 'smsUrl']) $(id).oninput = (e) => {
@@ -241,5 +244,23 @@ for (const t of document.querySelectorAll('[data-tab]')) t.onclick = () => {
   for (const o of document.querySelectorAll('[data-tab]')) o.classList.toggle('on', o === t);
   for (const p of document.querySelectorAll('[data-pane]')) p.hidden = p.dataset.pane !== t.dataset.tab;
 };
+
+for (const r of document.querySelectorAll('[name=mode]')) r.onchange = () => chrome.storage.local.set({ mode: r.value });
+for (const id of ['serverUrl', 'serverToken']) $(id).oninput = (e) => chrome.storage.local.set({ [id]: e.target.value.trim() });
+async function remoteAction(cmd, busy) {
+  $('remoteMsg').textContent = busy;
+  const r = await ctl(cmd);
+  $('remoteMsg').textContent = r.ok ? r.message : (r.error || 'Failed');
+}
+$('testServer').onclick = () => remoteAction('test', 'Connecting…');
+$('syncSession').onclick = () => remoteAction('syncSession', 'Syncing the session…');
+$('shotBtn').onclick = async () => {
+  const r = await ctl('screenshot');
+  if (!r.dataUrl) return toast(r.error || 'No screenshot (the tab must be visible)');
+  const img = h('img'); img.src = r.dataUrl; img.alt = 'Screenshot of the bot tab';
+  $('shot').replaceChildren(img);
+};
+// Remote mode: the server is polled while the panel is open (the worker may be asleep otherwise).
+setInterval(() => { if (st.mode === 'remote') chrome.runtime.sendMessage({ type: 'ctl', cmd: 'status' }).catch(() => {}); }, 2000);
 
 for (const r of document.querySelectorAll('[name=site]')) r.onchange = () => chrome.storage.local.set({ site: r.value });

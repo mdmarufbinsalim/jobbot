@@ -38,6 +38,7 @@
   <div class="pane" data-pane="overview">
     <div class="sec"><h3>First job</h3><div id="job"></div></div>
     <div class="sec"><h3>First schedule</h3><div id="schedule"></div></div>
+    <div class="sec"><div class="sechead"><h3>Screenshot</h3><button class="link" id="shotBtn">Take screenshot</button></div><div id="shot"></div></div>
     <div class="sec"><div class="sechead"><h3>Saved KYC links</h3><button class="link" id="kycClear">Clear all</button></div><div id="kyc"></div></div>
   </div>
 
@@ -54,6 +55,22 @@
   -->
 
   <div class="pane" data-pane="settings" hidden>
+    <div class="sec">
+      <h3>Run on</h3>
+      <div class="seg2" role="radiogroup" aria-label="Where the bot runs">
+        <label><input type="radio" name="mode" value="local"><span><b>This browser</b>runs in this Chrome</span></label>
+        <label><input type="radio" name="mode" value="remote"><span><b>Remote server</b>jobbot serve over HTTP</span></label>
+      </div>
+      <div class="fields" id="remoteFields" hidden>
+        <label>Server URL <input id="serverUrl" type="text" autocomplete="off" placeholder="http://127.0.0.1:8787"></label>
+        <label>Token <input id="serverToken" type="password" autocomplete="off" placeholder="printed by jobbot serve"></label>
+        <div class="actions">
+          <button class="act" id="testServer">Test connection</button>
+          <button class="act" id="syncSession" title="Send this browser's login for the hiring sites to the server">Sync session</button>
+        </div>
+        <p class="hint" id="remoteMsg">Log in on the hiring site in this browser, then press Sync session so the server starts logged in.</p>
+      </div>
+    </div>
     <div class="sec">
       <h3>Site to open on Start</h3>
       <div class="seg2" role="radiogroup" aria-label="Amazon site">

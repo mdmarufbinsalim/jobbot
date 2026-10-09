@@ -1,81 +1,109 @@
 #!/usr/bin/env node
 import { parseArgs } from 'node:util';
 import path from 'node:path';
+import fs from 'node:fs';
+import os from 'node:os';
+import crypto from 'node:crypto';
 import readline from 'node:readline';
-import { loadConfig } from '../src/config.js';
-import { open, DEFAULT_STATE } from '../src/browser.js';
-import { Bot } from '../src/bot.js';
-import { loadSolver } from '../src/captcha.js';
+import { DEFAULT_STATE } from '../src/browser.js';
+import { createRuntime } from '../src/runtime.js';
+import { startServer } from '../src/server.js';
 
 const HELP = `jobbot <command> [options]
 
 Commands
+  run      Run the hiring flow in a local browser (reuses the saved session)
   login    Log in once and save the session
-  run      Run the hiring flow (search → job → application → login → KYC link), reusing the saved session
+  serve    Run the bot behind an HTTP API so the extension (or curl) can control it, locally or from a server
 
-Typical use:  npm run login   (once)   then   npm start   (reuses the saved session; logs in itself if it expires)
+Typical use:  npm run login  (once)  then  npm start        or        npm run serve  +  the extension in "Remote" mode
 
-Options (run)
+Options
   --site ca|com          Amazon hiring site (default ca)
-  --headless             Hide the browser window (Amazon currently blocks headless browsers with a CloudFront 403)
+  --headless             run/login: hide the browser window (they default to a visible one)
+  --headed               serve: show the browser window (serve defaults to headless)
   --state <file>         Saved session (default ~/.config/jobbot/state.json)
   --once                 Stop after the first saved KYC link (default: start over)
-  --shots <dir>          Screenshots on every step change, captcha, stuck and KYC (default ./shots)
+  --shots <dir>          Save screenshots on every step change, captcha, stuck and KYC (run/login default ./shots)
   --no-shots             Do not save screenshots
   --out <dir>            Where KYC links are written (default ./out)
-  --captcha-solver <js>  Module with a default export { solve({ page, screenshot, log }) }
+  --captcha-solver <js>  Module with a default export { solve({ driver, dom, screenshot, log }) } returning true when solved
   --no-interactive       Do not read keyboard commands
 
-Keyboard while running:  p pause · r resume/retry · s screenshot · n restart · q quit
+serve only
+  --host <addr>          Interface to listen on (default 127.0.0.1; 0.0.0.0 to accept remote connections)
+  --port <n>             Port (default 8787)
+  --token <secret>       API token (default: JOBBOT_TOKEN, or generated once and kept in ~/.config/jobbot/token)
 
-Account details: JOBBOT_PHONE, JOBBOT_PIN, JOBBOT_SMS_URL, or config.local.json / ~/.config/jobbot/config.json
+Keyboard while running (run/login):  p pause · r resume · s screenshot · n restart · q quit
+
+Account details: JOBBOT_PHONE, JOBBOT_PIN, JOBBOT_SMS_URL, config.local.json, or pushed from the extension's Settings.
 `;
 
 const { values: v, positionals } = parseArgs({
   allowPositionals: true,
   options: {
-    site: { type: 'string', default: 'ca' }, headed: { type: 'boolean', default: true }, headless: { type: 'boolean', default: false }, state: { type: 'string', default: DEFAULT_STATE }, once: { type: 'boolean', default: false },
-    shots: { type: 'string', default: 'shots' }, 'no-shots': { type: 'boolean', default: false }, out: { type: 'string', default: 'out' }, 
-    'captcha-solver': { type: 'string' },
-    'no-interactive': { type: 'boolean', default: false },
+    site: { type: 'string' }, headless: { type: 'boolean', default: false }, headed: { type: 'boolean', default: false }, once: { type: 'boolean', default: false },
+    state: { type: 'string', default: DEFAULT_STATE }, shots: { type: 'string' }, 'no-shots': { type: 'boolean', default: false },
+    out: { type: 'string', default: 'out' }, 'captcha-solver': { type: 'string' }, 'no-interactive': { type: 'boolean', default: false },
+    host: { type: 'string', default: '127.0.0.1' }, port: { type: 'string', default: '8787' }, token: { type: 'string' },
     help: { type: 'boolean', short: 'h', default: false },
   },
 });
 const cmd = positionals[0] || 'run';
-const stamp = () => new Date().toTimeString().slice(0, 8);
-const log = (m) => console.log(`${stamp()} ${m}`);
+if (v.help || !['run', 'login', 'serve'].includes(cmd)) { console.log(HELP); process.exit(v.help ? 0 : 1); }
+if (v.site && !['ca', 'com'].includes(v.site)) { console.error('--site must be ca or com'); process.exit(1); }
 
-if (v.help || !['run', 'login'].includes(cmd)) { console.log(HELP); process.exit(v.help ? 0 : 1); }
-if (!['ca', 'com'].includes(v.site)) { console.error('--site must be ca or com'); process.exit(1); }
+let solver = null;
+if (v['captcha-solver']) solver = (await import(new URL(v['captcha-solver'], `file://${process.cwd()}/`).href)).default;
 
-{
-  const opts = {
-    site: v.site, headed: !v.headless,state: path.resolve(v.state), loginOnly: cmd === 'login', continuous: !v.once, shots: v['no-shots'] ? null : path.resolve(v.shots), out: path.resolve(v.out),
-    solver: await loadSolver(v['captcha-solver']),
-  };
-  const browser = await open(opts);
-  opts.saveState = async () => { await browser.save(); log(`session saved to ${opts.state}`); };
-  if (cmd === 'run' && !browser.hasState) log('no saved session yet; run `npm run login` first for a headless run (continuing, it will log in itself)');
-  const bot = new Bot({ context: browser.context, page: browser.page, cfg: loadConfig(), opts, log });
+const overrides = {};
+if (v.site) overrides.site = v.site;
+if (v.once) overrides.continuous = false;
+const wantShots = cmd !== 'serve' && !v['no-shots'] || !!v.shots;
+const runtime = createRuntime({
+  headed: cmd === 'serve' ? v.headed : !v.headless, state: path.resolve(v.state), loginOnly: cmd === 'login', solver, overrides,
+  shots: wantShots && !v['no-shots'] ? path.resolve(v.shots || 'shots') : null, out: path.resolve(v.out),
+});
+const { controller, say } = runtime;
 
-  const quit = async () => { bot.stop(); };
+if (cmd === 'serve') {
+  const tokenFile = path.join(os.homedir(), '.config/jobbot/token');
+  let token = v.token || process.env.JOBBOT_TOKEN;
+  if (!token) {
+    try { token = fs.readFileSync(tokenFile, 'utf8').trim(); } catch {}
+    if (!token) {
+      token = crypto.randomBytes(24).toString('hex');
+      fs.mkdirSync(path.dirname(tokenFile), { recursive: true });
+      fs.writeFileSync(tokenFile, token, { mode: 0o600 });
+    }
+  }
+  const port = Number(v.port);
+  await startServer({ runtime, token, host: v.host, port, say });
+  say(`API listening on http://${v.host}:${port} (browser: ${v.headed ? 'headed' : 'headless'})`);
+  say(`token: ${token}`);
+  if (v.host !== '127.0.0.1' && v.host !== 'localhost') say('warning: this is plain HTTP; put it behind TLS or an SSH tunnel before exposing it');
+  say('waiting for Start from the extension (or: curl -X POST -H "Authorization: Bearer <token>" http://host:port/start)');
+  const quit = async () => { await controller.stop(); process.exit(0); };
   process.on('SIGINT', quit); process.on('SIGTERM', quit);
-
+} else {
+  const quit = async () => { await controller.stop(); process.exit(0); };
+  process.on('SIGINT', quit); process.on('SIGTERM', quit);
   if (!v['no-interactive'] && process.stdin.isTTY) {
     readline.emitKeypressEvents(process.stdin);
     process.stdin.setRawMode(true);
-    process.stdin.on('keypress', (_, k) => {
+    process.stdin.on('keypress', async (_, k) => {
       if (k.ctrl && k.name === 'c') return quit();
-      if (k.name === 'p') bot.pause();
-      if (k.name === 'r') bot.resume();
-      if (k.name === 's') bot.shot('manual').then((f) => { if (!f && !opts.shots) log('pass --shots <dir> to save screenshots'); });
-      if (k.name === 'n') bot.restart();
+      if (k.name === 'p') controller.pause();
+      if (k.name === 'r') controller.resume();
+      if (k.name === 's') { const d = await controller.screenshot(); if (d) say('screenshot taken (use --shots to save them)'); }
+      if (k.name === 'n') controller.restart();
       if (k.name === 'q') quit();
     });
   }
-  log(`running on hiring.amazon.${opts.site} (${opts.headed ? 'headed' : 'headless'})`);
-  await bot.run();
-  if (cmd === 'run') await browser.save().catch(() => {}); // keep the session fresh for the next run
-  await browser.close().catch(() => {});
+  say(`${cmd} on hiring.amazon.${runtime.settings.get().site} (${v.headless ? 'headless' : 'headed'})`);
+  await controller.start();
+  // run until the bot ends (login done, --once finished, tab closed)
+  await new Promise((resolve) => { const t = setInterval(() => { if (!controller.running) { clearInterval(t); resolve(); } }, 500); });
   process.exit(0);
 }

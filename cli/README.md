@@ -23,3 +23,17 @@ KYC links are appended to `<out>/kyc-links.txt`.
 ## Captcha
 For now the bot takes a screenshot and waits. To plug in a solver service, pass `--captcha-solver ./solver.js`, a module whose default export is
 `{ async solve({ page, screenshot, log }) { …; return true; } }`; returning true lets the flow continue.
+
+## Server API (`jobbot serve`)
+`Authorization: Bearer <token>` on everything except `GET /health`. Default `127.0.0.1:8787`, headless (`--headed` to show the window).
+
+| Route | |
+|---|---|
+| `GET /status` | running, paused, live step/detail, first job/schedule, KYC links, recent log |
+| `POST /start` `/pause` `/resume` `/restart` `/stop` | controls |
+| `GET /screenshot` | PNG of the bot's tab right now |
+| `PUT /config` | `{ site, continuous, loginPhone, loginPin, smsUrl }` |
+| `PUT /session` | `{ cookies, origins }` (Playwright storage state; only Amazon hiring cookies are kept) |
+| `GET /kyc` | saved KYC links |
+
+The flow logic lives in `../extension/core/`; this folder only provides the Playwright driver, the HTTP server and the CLI.

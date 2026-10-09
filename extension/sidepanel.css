@@ -119,6 +119,13 @@ a:hover { color: var(--fg); text-decoration: underline; }
 .empty b { color: var(--fg); font-weight: 500; }
 .empty small { font-size: 12px; }
 
+#shot img { display: block; width: 100%; border: 1px solid var(--line); border-radius: var(--r); }
+#remoteFields { margin-top: 8px; }
+#remoteFields .actions { margin-top: 0; }
+#remoteFields .act { flex: 1; }
+#remoteFields[hidden] { display: none; }
+.hint { overflow-wrap: anywhere; }
+
 /* log */
 .tools { display: flex; gap: 6px; }
 .search { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; padding: 0 10px; background: var(--bg); border: 1px solid var(--line2); border-radius: var(--r); color: var(--muted); }

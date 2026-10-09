@@ -1,20 +1,27 @@
 {
   "manifest_version": 3,
   "name": "Jobbot",
-  "version": "0.7.0",
-  "description": "Shows the current step of the Amazon hiring flow (search, job, application, login) plus a live GraphQL inspector.",
+  "version": "1.0.0",
+  "description": "Amazon hiring assistant. Runs in this Chrome, or controls a headless jobbot server over HTTP.",
   "permissions": [
     "storage",
-    "sidePanel"
+    "sidePanel",
+    "tabs",
+    "scripting",
+    "cookies"
   ],
   "host_permissions": [
     "https://*.hiring.amazon.ca/*",
     "https://*.hiring.amazon.com/*",
     "https://temp-number.com/*",
-    "https://www.temp-number.com/*"
+    "https://www.temp-number.com/*",
+    "https://*.amazon.in/remoteKYC*",
+    "https://*.amazon.com/remoteKYC*",
+    "https://*.amazon.ca/remoteKYC*"
   ],
   "background": {
-    "service_worker": "background.js"
+    "service_worker": "background.js",
+    "type": "module"
   },
   "content_scripts": [
     {
@@ -37,59 +44,7 @@
       "js": [
         "relay.js"
       ],
-      "run_at": "document_start",
-      "all_frames": true
-    },
-    {
-      "matches": [
-        "https://auth.hiring.amazon.com/*",
-        "https://auth.hiring.amazon.ca/*"
-      ],
-      "js": [
-        "login.js"
-      ],
-      "run_at": "document_idle"
-    },
-    {
-      "matches": [
-        "https://temp-number.com/*",
-        "https://www.temp-number.com/*"
-      ],
-      "js": [
-        "reader.js"
-      ],
-      "run_at": "document_idle"
-    },
-    {
-      "matches": [
-        "https://hiring.amazon.com/application/*",
-        "https://hiring.amazon.ca/application/*"
-      ],
-      "js": [
-        "application.js"
-      ],
-      "run_at": "document_idle"
-    },
-    {
-      "matches": [
-        "https://hiring.amazon.com/app*",
-        "https://hiring.amazon.ca/app*"
-      ],
-      "js": [
-        "search.js"
-      ],
-      "run_at": "document_idle"
-    },
-    {
-      "matches": [
-        "https://*.amazon.in/remoteKYC*",
-        "https://*.amazon.com/remoteKYC*",
-        "https://*.amazon.ca/remoteKYC*"
-      ],
-      "js": [
-        "kyc.js"
-      ],
-      "run_at": "document_idle"
+      "run_at": "document_start"
     }
   ],
   "side_panel": {
