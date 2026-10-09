@@ -2,14 +2,15 @@
 // then the consent/questions pages (tick every checkbox, answer "No" to the Amazonian referral question, press I Agree / Next / Continue,
 // or Start identity verification). The page after identity verification is not automated yet.
 (() => {
-  const REFRESH_AFTER_MS = 10000; // a page that shows no button this long after load gets reloaded; each further reload waits 5s longer
-  const MAX_REFRESHES = 6;       // in a row, so a dead page can't be hammered forever
+  const REFRESH_AFTER_MS = 10000; // a page that shows no button this long after load gets reloaded; reload, max MAX_REFRESHES times in a row
+  const MAX_REFRESHES = 5;       // in a row, then it stays stuck
   const RESET_AFTER_MS = 300000; // the count starts over if the last refresh was this long ago
   const REFRESH_KEY = 'jobbot-app-refreshes';
   const CLICK_DELAY_MS = 600;
 
   // Highest priority first: the first one found is pressed.
   const BUTTONS = [
+    /^apply for other jobs$/i, // "all shifts have been filled" page: back to the job search
     /^create (an )?application$/i,
     /^start identity verification$/i,
     /^i agree$/i,
@@ -77,14 +78,14 @@
   }
 
   function maybeRefresh(r) {
-    if (!/^#\/(pre-)?consent/.test(r) || [...clicked].some((k) => k.startsWith(r))) return false;
+    if ([...clicked].some((k) => k.startsWith(r))) return false;
     let rec = {};
     try { rec = JSON.parse(sessionStorage.getItem(REFRESH_KEY)) || {}; } catch {}
     const n = rec.at && Date.now() - rec.at < RESET_AFTER_MS ? rec.n || 0 : 0;
-    const wait = REFRESH_AFTER_MS + n * 5000;
+    const wait = REFRESH_AFTER_MS;
     const left = wait - (Date.now() - loadedAt);
     if (left > 0) { status(`${r} · waiting for the page to load (reload in ${Math.ceil(left / 1000)}s)`); return true; }
-    if (n >= MAX_REFRESHES) { status(`${r} · page never loaded after ${MAX_REFRESHES} refreshes`); return true; }
+    if (n >= MAX_REFRESHES) { status(`${r} · stuck: page did not load after ${MAX_REFRESHES} refreshes`); return true; }
     try { sessionStorage.setItem(REFRESH_KEY, JSON.stringify({ n: n + 1, at: Date.now() })); } catch {}
     status(`${r} · nothing loaded, refreshing (${n + 1}/${MAX_REFRESHES})…`);
     location.reload();
@@ -113,7 +114,11 @@
     clicked.add(key);
     pending = true;
     status(`${r} · clicking ${label}…`);
-    setTimeout(() => { pending = false; btn.click(); status(`${r} · ${label} clicked`); }, CLICK_DELAY_MS);
+    setTimeout(() => {
+      pending = false; btn.click(); status(`${r} · ${label} clicked`);
+      // If the button doesn't take us to the job search itself, go there directly.
+      if (/^apply for other jobs$/i.test(label)) setTimeout(() => { if (location.pathname.startsWith('/application')) location.assign(`${location.origin}/app#/jobSearch`); }, 3000);
+    }, CLICK_DELAY_MS);
   }
 
   chrome.storage.local.get(['running', 'paused']).then((s) => {

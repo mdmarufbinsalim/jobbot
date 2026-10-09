@@ -48,11 +48,14 @@
   }
 
   const OPEN_DELAY_MS = 3000;
-  const STALL_MS = 5000;      // no progress for this long -> refresh the page
+  const STALL_MS = 10000;     // a step that shows no progress this long after load -> refresh the page
+  const MAX_REFRESHES = 5;    // per step; after that the page stays as it is ("stuck")
+  const RESET_AFTER_MS = 120000; // the count starts over if the last refresh was this long ago
   const REFRESH_KEY = 'jobbot-refreshes';
   let lastProgress = Date.now();
   const progress = () => { lastProgress = Date.now(); };
   let navTimer = null, navAt = 0, navLabel = '';
+  let stuck = false;
   let secrets = []; // saved login phone/PIN: scrubbed from anything we capture, display or copy
   let running = false, userPaused = false; // nothing runs until Start is pressed in the side panel
   let paused = true;   // not running, or paused
@@ -75,10 +78,19 @@
       + `&scheduleId=${encodeURIComponent(c.scheduleId)}&ssoEnabled=1`;
   }
 
+  function refreshCount(step) {
+    try {
+      const rec = JSON.parse(sessionStorage.getItem(REFRESH_KEY)) || {};
+      return rec.step === step && Date.now() - rec.at < RESET_AFTER_MS ? rec.n || 0 : 0;
+    } catch { return 0; }
+  }
+  const clearRefreshes = () => { stuck = false; try { sessionStorage.removeItem(REFRESH_KEY); } catch {} };
+
   // Navigate in the same tab after a visible countdown; cancelled implicitly if `stillValid` fails when it fires.
   function navigateSoon(label, target, stillValid) {
     clearTimeout(navTimer);
     navLabel = label;
+    clearRefreshes(); // this step got what it needed
     navAt = Date.now() + OPEN_DELAY_MS;
     navTimer = setTimeout(() => { navAt = 0; if (stillValid()) location.href = target; }, OPEN_DELAY_MS);
   }
@@ -158,7 +170,7 @@
     return {
       step: cur,
       stepName: cur >= 0 ? `${cur + 1}/${STEPS.length} ${STEPS[cur]}` : 'Idle',
-      detail: paused ? (running ? 'Paused — press Resume in the side panel' : 'Stopped — press Start in the side panel') : secs ? `${navLabel} in ${secs}s` : stepDetail(cur),
+      detail: paused ? (running ? 'Paused — press Resume in the side panel' : 'Stopped — press Start in the side panel') : stuck ? `Stuck: page did not load after ${MAX_REFRESHES} refreshes` : secs ? `${navLabel} in ${secs}s` : stepDetail(cur),
       chip: paused ? (running ? 'paused' : 'idle') : cur < 0 ? 'idle' : '',
       chipText: paused ? (running ? 'Paused' : 'Stopped') : cur < 0 ? 'Idle' : 'Running',
     };
@@ -180,7 +192,7 @@
   // Forget the flow state and begin again from the search page (also re-arms the login attempt limit).
   function restart() {
     clearTimeout(navTimer); navAt = 0;
-    try { sessionStorage.removeItem(REFRESH_KEY); } catch {}
+    clearRefreshes();
     jobs = new Map(); responses = 0; firstId = null; schedule = null;
     chrome.storage.local.set({ loginReset: Date.now() }).catch(() => {});
     const same = location.origin === SITE && location.pathname === '/app' && location.hash.startsWith(ROUTE);
@@ -204,10 +216,15 @@
     return true;
   }
 
-  // Stalled pages are reloaded until you stop it.
+  // A step that shows no progress for STALL_MS is reloaded, at most MAX_REFRESHES times in a row; then it stays stuck.
   function watchdog() {
     if (!ready || !isTop) return;
-    if (!waitingOnAutomation() || Date.now() - lastProgress <= STALL_MS) return;
+    if (!waitingOnAutomation()) { stuck = false; return; }
+    if (Date.now() - lastProgress <= STALL_MS) return;
+    const step = currentStep();
+    const n = refreshCount(step);
+    if (n >= MAX_REFRESHES) { stuck = true; return; }
+    try { sessionStorage.setItem(REFRESH_KEY, JSON.stringify({ step, n: n + 1, at: Date.now() })); } catch {}
     lastProgress = Date.now();
     location.reload();
   }
