@@ -5,7 +5,7 @@
 //   panel side:   view() / respond(answer)
 //
 // status: awaiting (needs a person) · working (clicking / checking) · solved · closed (given up or cancelled)
-let current = null, waiter = null, seq = 0;
+let current = null, waiter = null, seq = 0, note = '';
 const listeners = new Set();
 const notify = () => { for (const fn of listeners) try { fn(); } catch {} };
 const id = () => `c${Date.now().toString(36)}${(seq++).toString(36)}`;
@@ -13,7 +13,9 @@ const id = () => `c${Date.now().toString(36)}${(seq++).toString(36)}`;
 export const hub = {
   onChange(fn) { listeners.add(fn); return () => listeners.delete(fn); },
 
-  open(meta) { current = { id: id(), status: 'awaiting', attempt: 1, lastResult: null, message: '', ...meta }; notify(); return current.id; },
+  // note(): a message the next open() starts with (e.g. why an automatic solver handed over to a person)
+  note(text) { note = text || ''; },
+  open(meta) { current = { id: id(), status: 'awaiting', attempt: 1, lastResult: null, message: note, ...meta }; note = ''; notify(); return current.id; },
   update(patch) { if (current) { Object.assign(current, patch); notify(); } },
   // Ends the challenge. The image goes at once; the small record stays so the panel can show how it ended.
   finish(status, message = '', lastResult = current?.lastResult ?? null) {

@@ -11,10 +11,10 @@ const btn = (label, fn, cls = 'mini') => { const b = h('button', cls, label); b.
 const pct = (n) => `${(n * 100).toFixed(2)}%`;
 
 const send = (cmd, extra) => chrome.runtime.sendMessage({ type: 'ctl', cmd, ...extra }).catch(() => null);
-let ch = null, sel = null, drawnKey = '', busy = false, live = null;
+let ch = null, sel = null, drawnKey = '', busy = false, live = null, running = false;
 
 async function poll() {
-  if (!(live || ch)) return;
+  if (!(live || ch || running)) return; // `live` is empty on the login step, so the run state counts too
   const r = await send('captcha');
   if (!r?.ok) return;
   ch = r.challenge || null;
@@ -28,7 +28,9 @@ function render() {
   if (key === drawnKey) return;
   drawnKey = key;
   // a new capture (first, refreshed, or after a rejection) starts with no picks
-  if (!sel || sel.challenge !== `${ch.id}|${ch.capturedAt}`) { sel = new Selection(ch.grid); sel.challenge = `${ch.id}|${ch.capturedAt}`; }
+  if (!sel || sel.challenge !== `${ch.id}|${ch.capturedAt}`) { sel = new Selection(ch.grid); sel.seeded = false; sel.challenge = `${ch.id}|${ch.capturedAt}`; }
+  // Gemini's picks (core/captcha/gemini-solver.js) are shown as ordinary selected tiles while the solver waits to click them
+  if (ch.suggested?.length && !sel.seeded) { sel.seeded = true; for (const t of ch.suggested) sel.toggle(t); }
   const interactive = ch.status === 'awaiting' && !busy;
 
   const head = h('div', 'chead');
@@ -109,5 +111,7 @@ function render() {
 }
 
 chrome.storage.session.get('live').then((s) => { live = s.live || null; poll(); });
+chrome.storage.local.get('running').then((s) => { running = !!s.running; poll(); });
+chrome.storage.onChanged.addListener((c, area) => { if (area === 'local' && c.running) { running = !!c.running.newValue; poll(); } });
 chrome.storage.onChanged.addListener((c, area) => { if (area === 'session' && c.live) { live = c.live.newValue || null; poll(); } });
 setInterval(poll, 900);

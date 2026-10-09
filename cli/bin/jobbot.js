@@ -73,7 +73,7 @@ const healthy = () => fetch(`${BASE}/health`, { signal: AbortSignal.timeout(2000
 const alive = (pid) => { try { process.kill(pid, 0); return true; } catch { return false; } };
 const readPid = () => { try { return Number(fs.readFileSync(PID_FILE, 'utf8')); } catch { return 0; } };
 
-const STEP_NAMES = ['Search', 'Job', 'Application', 'Login'];
+const STEP_NAMES = ['Login', 'Search', 'Job', 'Application'];
 const pay = (lo, hi) => (lo && hi && lo !== hi ? `${lo}–${hi}` : hi || lo || '');
 
 // Everything the server knows: bot state, step progress, the first job and shift found, KYC links, settings, recent log.

@@ -14,7 +14,7 @@ import { submit } from './input.js';
 import { verify } from './verify.js';
 import { hub } from './hub.js';
 
-const meta = (cap, grid) => ({
+export const meta = (cap, grid) => ({
   image: cap.image, imageSize: cap.imageSize, viewport: cap.viewport, grid,
   prompt: cap.page.prompt || '', view: cap.page.view || { x: 0, y: 0, w: 1, h: 1 },
   hasConfirm: !!cap.page.confirm, aspectOk: cap.aspectOk, capturedAt: cap.at,
@@ -44,8 +44,8 @@ export async function solveManually({ driver, log, signal, kind }) {
           attempts++;
           hub.update({ status: 'working', message: `Clicking ${picks.length} tile(s)…` });
           log(`captcha: attempt ${attempts}, ${picks.length} tile(s) selected`);
-          const sent = await submit(driver, picks, { viewport: cap.viewport, confirm: cap.page.confirm });
-          log(`captcha: clicked ${sent.clicked}, confirm ${sent.confirmed ? 'pressed' : 'not found'}`);
+          const sent = await submit(driver, picks, { viewport: cap.viewport, confirm: cap.page.confirm, log });
+          log(`captcha: clicked ${sent.clicked}, confirm ${sent.confirmed ? 'pressed' : 'not found'} (${sent.via === 'mouse' ? 'real mouse' : 'in-page clicks'})`);
           hub.update({ message: 'Checking the result…' });
           const result = await verify(driver, cap.page);
           log(`captcha: ${result} (${since()})`);

@@ -28,7 +28,7 @@ export const TIMING = {
   MAX_LOGIN_ATTEMPTS: 4,
 };
 const T = TIMING;
-export const STEPS = ['Search', 'Job', 'Application', 'Login'];
+export const STEPS = ['Login', 'Search', 'Job', 'Application'];
 
 export class Bot {
   constructor({ driver, host }) {
@@ -49,6 +49,7 @@ export class Bot {
   cfg() { return this.host.config(); }
   get site() { return this._site || this.cfg().site || 'ca'; }
   get origin() { return `https://hiring.amazon.${this.site}`; }
+  get loginUrl() { return 'https://auth.hiring.amazon.com/#/login'; } // every run starts here, then moves on to the search
   get searchUrl() { return `${this.origin}/app#/jobSearch`; }
   get locale() { return this.site === 'ca' ? 'en-CA' : 'en-US'; }
   dom(op, arg) { return this.driver.evaluate(pageFn, { op, arg }); }
@@ -88,7 +89,7 @@ export class Bot {
   // --- snapshot for UIs ---
   snapshot() {
     const step = this.step();
-    const detail = this.captcha ? 'Captcha is being asked. Solve it, then press Resume'
+    const detail = this.captcha ? (this.solverError ? `Captcha solver failed: ${this.solverError}. Solve it yourself, then press Resume` : 'Captcha is being asked. Solve it, then press Resume')
       : this.paused ? 'Paused — press Resume'
       : this.stuck ? this.statusText
       : this.statusText;
@@ -123,10 +124,10 @@ export class Bot {
   hashJobId() { return new URLSearchParams(this.hash().split('?')[1] || '').get('jobId'); }
   step() {
     const u = this.url();
-    if (/^auth\./.test(u.hostname)) return 3;
-    if (u.pathname.startsWith('/application')) return 2;
-    if (u.hash.startsWith('#/jobDetail')) return 1;
-    if (u.hash.startsWith('#/jobSearch')) return 0;
+    if (/^auth\./.test(u.hostname)) return 0;
+    if (u.pathname.startsWith('/application')) return 3;
+    if (u.hash.startsWith('#/jobDetail')) return 2;
+    if (u.hash.startsWith('#/jobSearch')) return 1;
     return -1;
   }
   async go(url) {
@@ -199,7 +200,8 @@ export class Bot {
   async restart() {
     this.nav = null; this.clearRefreshes(); this.jobs.clear(); this.firstId = null; this.schedule = null;
     this.resetLogin(); this.paused = false; this._site = null; this.holdUntil = 0;
-    await this.go(this.searchUrl);
+    this.loginFirst = true;
+    await this.go(this.loginUrl);
     this.changed();
   }
   // Open the solver again after a person left the captcha to the page (the panel's "Try again").
@@ -214,14 +216,15 @@ export class Bot {
     this.driver.on('navigated', () => { this.resetDoc(); this.progress(); this.changed(); });
     this.driver.on('gql', (e) => { try { this.onGql(e); } catch (err) { this.log(`gql error: ${err.message}`); } });
     this.driver.on('closed', () => { this.stopped = true; });
-    if (navigate) await this.go(this.searchUrl);
+    this.loginFirst = true;
+    if (navigate) await this.go(this.loginUrl);
     let lastStep = -2, sawLogin = false;
     while (!this.stopped) {
       try {
         const step = this.step();
-        if (step === 3) sawLogin = true;
+        if (step === 0) sawLogin = true;
         // login-only mode: once the login page hands back to the hiring site, the session is complete
-        if (this.host.loginOnly && sawLogin && step !== 3 && /^hiring\.amazon\./.test(this.url().hostname)) {
+        if (this.host.loginOnly && sawLogin && step !== 0 && /^hiring\.amazon\./.test(this.url().hostname)) {
           await sleep(3000);
           await this.host.onLoggedIn?.();
           this.log('logged in');
@@ -257,12 +260,15 @@ export class Bot {
 
     const u = this.url();
     if (/\/remoteKYC/.test(u.pathname) && /amazon\.(in|com|ca)$/.test(u.hostname)) return this.kyc(u);
+    if (this.step() > 0) this.loginFirst = false; // past the login: the normal flow
     switch (this.step()) {
-      case 0: return this.searchTick();
-      case 1: return this.jobTick();
-      case 2: return this.applicationTick();
-      case 3: return this.loginTick();
+      case 0: return this.loginTick();
+      case 1: return this.searchTick();
+      case 2: return this.jobTick();
+      case 3: return this.applicationTick();
       default:
+        // the login page sends an already logged-in browser straight on to the hiring site: carry on with the search from there
+        if (this.loginFirst && /^https:\/\/hiring\.amazon\./.test(this.driver.url())) { this.loginFirst = false; await this.go(this.searchUrl); } else
         if (!/^https:\/\/(auth\.)?hiring\.amazon\./.test(this.driver.url())) await this.go(this.searchUrl);
         else this.status('Not on a known step');
     }
@@ -277,15 +283,19 @@ export class Bot {
     }
     if (this.captchaOverride) return false;
     if (!this.captcha) {
-      this.captcha = true;
+      this.captcha = true; this.solverError = '';
       this.status('Captcha is being asked');
       this.changed();
       await this.shot('captcha');
+      // the modal draws its tiles a moment after it appears: give it time before the capture
+      await sleep(T.CAPTCHA_SETTLE_MS ?? 2000);
+      if (this.stopped || this.paused || !(await this.dom('captchaVisible').catch(() => false))) { this.captcha = false; this.changed(); return true; }
       if (this.host.solver) {
         try {
           const ok = await this.runSolver('captcha', 'captcha-solver');
           if (ok && !this.stopped) { this.captcha = false; this.progress(); this.changed(); return false; }
-        } catch (e) { this.log(`captcha solver failed: ${e.message}`); }
+          if (!ok && !this.stopped && !this.captchaOverride) this.solverError = this.solverError || 'it gave up';
+        } catch (e) { this.log(`captcha solver failed: ${e.message}`); this.solverError = String(e.message).split('\n')[0].slice(0, 160); this.changed(); }
       }
       if (!this.captchaOverride && !this.stopped) this.log('Waiting for the captcha to be solved (Resume to carry on)');
     }
@@ -335,13 +345,13 @@ export class Bot {
     }
     if (this.nav) return;
     this.status(this.firstId ? `Found ${this.jobs.size} job(s). First: ${this.firstId}` : 'Waiting for searchJobCardsByLocation…');
-    if (this.stalled()) await this.reloadStalled(0, 'Search did not load');
+    if (this.stalled()) await this.reloadStalled(1, 'Search did not load');
   }
 
   async jobTick() {
     if (this.nav) return;
     this.status(this.schedule ? `Schedule found: ${this.schedule.scheduleId}` : 'Waiting for searchScheduleCards…');
-    if (this.stalled()) await this.reloadStalled(1, 'Job page did not load');
+    if (this.stalled()) await this.reloadStalled(2, 'Job page did not load');
   }
 
   async applicationTick() {
@@ -356,7 +366,7 @@ export class Bot {
     if (!btn) {
       if ([...this.clicked].some((k) => k.startsWith(r))) return this.status(`Application ${r} · waiting after click`);
       this.status(`Application ${r} · waiting for a button…`);
-      if (this.stalled()) await this.reloadStalled(2, `Nothing loaded on ${r}`);
+      if (this.stalled()) await this.reloadStalled(3, `Nothing loaded on ${r}`);
       return;
     }
     const key = `${r}|${btn.text.toLowerCase()}`;

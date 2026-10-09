@@ -8,10 +8,10 @@
     "sidePanel",
     "tabs",
     "scripting",
-    "cookies",
-    "debugger"
+    "cookies"
   ],
   "host_permissions": [
+    "<all_urls>",
     "https://*.hiring.amazon.ca/*",
     "https://*.hiring.amazon.com/*",
     "https://generativelanguage.googleapis.com/*",

@@ -25,23 +25,12 @@ export class ChromeDriver {
   reload() { return chrome.tabs.reload(this.tabId); }
   evaluate(fn, arg) { return run(this.tabId, fn, arg); }
 
-  // A real (trusted) mouse click at viewport CSS pixels through the debugger protocol. Throws if it cannot attach, e.g.
-  // DevTools is open on the tab; the caller then falls back to clicking from inside the page.
-  async click(x, y) {
-    const target = { tabId: this.tabId };
-    await chrome.debugger.attach(target, '1.3');
-    try {
-      const at = { x, y, button: 'left', clickCount: 1 };
-      await chrome.debugger.sendCommand(target, 'Input.dispatchMouseEvent', { type: 'mouseMoved', x, y });
-      await chrome.debugger.sendCommand(target, 'Input.dispatchMouseEvent', { type: 'mousePressed', ...at });
-      await chrome.debugger.sendCommand(target, 'Input.dispatchMouseEvent', { type: 'mouseReleased', ...at });
-    } finally { await chrome.debugger.detach(target).catch(() => {}); }
-  }
-
-  // Only the visible tab of its window can be captured; otherwise there is nothing truthful to return.
+  // No debugger: clicks on the page (tiles, Confirm) are synthetic events sent from inside it (core/dom.js clickAt /
+  // clickConfirm), because there is no `click` method here. The screenshot is Chrome's own capture of the visible tab,
+  // which needs the <all_urls> host permission (or a live activeTab grant) and the tab to be the one on screen.
   async screenshot() {
     const tab = await chrome.tabs.get(this.tabId);
-    if (!tab.active) return null;
+    if (!tab.active) return null; // only the visible tab can be captured
     return chrome.tabs.captureVisibleTab(tab.windowId, { format: 'png' });
   }
 

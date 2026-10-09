@@ -7,7 +7,8 @@ import { makeGrid, tileCenter, tileCount } from './geometry.js';
 import { validateSelections } from './selection.js';
 import { submit } from './input.js';
 import { verify } from './verify.js';
-import { solveManually } from './manual-solver.js';
+import { solveManually, meta } from './manual-solver.js';
+import { hub } from './hub.js';
 import LOCAL_KEY from './local-key.js'; // a key kept on this machine only (never committed)
 
 const MAX_ATTEMPTS = 3;
@@ -49,8 +50,13 @@ export function geminiSolver({ getKey, getModel = () => '' }) {
   return { name: 'gemini-free', solve: (ctx) => solve(ctx, getKey() || LOCAL_KEY, getModel() || DEFAULT_MODEL) };
 }
 
+const HOLD_MS = 2000; // how long the picks stay on screen before they are clicked
+const wait = (ms, signal) => new Promise((r) => { const t = setTimeout(r, ms); signal?.addEventListener('abort', () => { clearTimeout(t); r(); }, { once: true }); });
+
+// The side panel shows the grid first, then Gemini's picks highlighted for HOLD_MS, then the clicks happen.
 async function solve(ctx, key, model) {
   const { driver, log, signal, kind } = ctx;
+  let id = null, failure = '';
   try {
     if (kind === 'human-check') { // Begin was just pressed: wait for the tiles to load
       const until = Date.now() + 20000;
@@ -60,21 +66,30 @@ async function solve(ctx, key, model) {
       const t0 = Date.now();
       const cap = await capture(driver);
       const grid = makeGrid({ region: cap.page.region || undefined });
+      const view = { ...meta(cap, grid), status: 'working', attempt, suggested: null, message: `Asking Gemini… (attempt ${attempt})` };
+      if (id && hub.view()?.id === id) hub.update(view); else { id = hub.open(view); hub.update({ status: 'working', message: view.message }); }
       const tiles = await askGemini(cap, grid, signal, key, model, log);
       log(`captcha: ${model} picked ${tiles.length} tile(s) (attempt ${attempt}, ${((Date.now() - t0) / 1000).toFixed(1)}s)`);
+      hub.update({ suggested: tiles, message: tiles.length ? `Gemini picked ${tiles.join(', ')}. Submitting in ${HOLD_MS / 1000} s…` : `Gemini found no matching tile. Submitting in ${HOLD_MS / 1000} s…` });
+      await wait(HOLD_MS, signal);
+      if (signal?.aborted) break;
       const picks = validateSelections(tiles.map((tile) => ({ tile, ...tileCenter(grid, tile) })), grid);
-      const sent = await submit(driver, picks, { viewport: cap.viewport, confirm: cap.page.confirm });
-      log(`captcha: clicked ${sent.clicked}, confirm ${sent.confirmed ? 'pressed' : 'not found'}`);
+      hub.update({ message: 'Clicking…' });
+      const sent = await submit(driver, picks, { viewport: cap.viewport, confirm: cap.page.confirm, log });
+      log(`captcha: clicked ${sent.clicked}, confirm ${sent.confirmed ? 'pressed' : 'not found'} (${sent.via === 'mouse' ? 'real mouse' : 'in-page clicks'})`);
       const result = await verify(driver, cap.page);
       log(`captcha: ${result}`);
-      if (result === 'accepted') return true;
+      if (result === 'accepted') { hub.finish('solved', 'Solved. Resuming the bot.', null); return true; }
+      hub.update({ message: { rejected: 'Rejected. Trying again…', expired: 'Expired. Trying the new image…', replaced: 'A new challenge appeared. Trying it…', unresolved: 'No change on the page. Trying again…' }[result] });
     }
   } catch (e) {
-    if (signal?.aborted) return false;
-    if (/no tile challenge/.test(e.message)) return true;
-    log(`captcha: Gemini solver failed: ${String(e.message).split('\n')[0]}`);
+    if (signal?.aborted) { if (id && hub.view()?.id === id) hub.finish('closed', 'Cancelled.'); return false; }
+    if (/no tile challenge/.test(e.message)) { if (id && hub.view()?.id === id) hub.finish('solved', 'Solved. Resuming the bot.', null); return true; }
+    failure = String(e.message).split('\n')[0].slice(0, 200);
+    log(`captcha: Gemini solver failed: ${failure}`);
   }
-  if (signal?.aborted) return false;
+  if (signal?.aborted) { if (id && hub.view()?.id === id) hub.finish('closed', 'Cancelled.'); return false; }
   log('captcha: handing over to the manual solver');
+  hub.note(failure ? `Gemini failed: ${failure}. Pick the tiles yourself.` : 'Gemini could not solve it. Pick the tiles yourself.');
   return solveManually(ctx);
 }

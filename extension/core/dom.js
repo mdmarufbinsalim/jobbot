@@ -26,6 +26,10 @@ export function pageFn({ op, arg }) {
     captchaProbe: () => {
       const hash = (str) => { let h = 5381; for (let i = 0; i < str.length; i++) h = ((h << 5) + h + str.charCodeAt(i)) | 0; return (h >>> 0).toString(36); };
       const viewport = { width: innerWidth, height: innerHeight, dpr: devicePixelRatio || 1, scrollX: Math.round(scrollX), scrollY: Math.round(scrollY) };
+      // The modal's challenge lives in an open shadow root (<awswaf-captcha>), which plain querySelectorAll / innerText skip.
+      const deepAll = (node, sel) => { const out = [...node.querySelectorAll(sel)]; for (const h of node.querySelectorAll('*')) if (h.shadowRoot) out.push(...deepAll(h.shadowRoot, sel)); return out; };
+      const deepText = (node) => [node.innerText || '', ...deepAll(node, '*').filter((h) => h.shadowRoot)
+        .flatMap((h) => [...h.shadowRoot.children].filter((c) => !/^(STYLE|LINK|SCRIPT)$/.test(c.tagName)).map((c) => c.innerText || ''))].join('\n');
       // the modal, or the full-page "Let's confirm you are human" once Begin has been pressed and the tiles are showing
       const begin = [...document.querySelectorAll('button, input[type=submit], input[type=button], a, [role=button]')].find((b) => visible(b) && /^begin\b/i.test(textOf(b)));
       const humanPage = /confirm you are human/i.test(document.body.innerText) && !begin;
@@ -34,7 +38,7 @@ export function pageFn({ op, arg }) {
       const out = { visible: !!root, viewport, url: location.origin + location.pathname, region: null, confirm: null, error: false, expired: false, fingerprint: '', prompt: '', view: null };
       if (!root) return out;
       const rect = (r) => ({ x: r.left / viewport.width, y: r.top / viewport.height, w: r.width / viewport.width, h: r.height / viewport.height });
-      const all = [...root.querySelectorAll('img, canvas, svg')].filter(visible).map((e) => ({ e, r: e.getBoundingClientRect() })).filter((m) => m.r.width >= 40 && m.r.height >= 40);
+      const all = deepAll(root, 'img, canvas, svg').filter(visible).map((e) => ({ e, r: e.getBoundingClientRect() })).filter((m) => m.r.width >= 40 && m.r.height >= 40);
       // a grid of tiles = the most common image size (at least 4 of them); the region is their bounding box
       const bySize = new Map();
       for (const m of all) { const k = `${Math.round(m.r.width / 4)}x${Math.round(m.r.height / 4)}`; bySize.set(k, [...(bySize.get(k) || []), m]); }
@@ -47,14 +51,18 @@ export function pageFn({ op, arg }) {
       }
       if (media && media.r.left >= 0 && media.r.top >= 0 && media.r.right <= viewport.width && media.r.bottom <= viewport.height) {
         out.region = rect(media.r);
-        out.fingerprint = hash(`${tiles && tiles.length >= 4 ? tiles.map((t) => t.e.currentSrc || t.e.src || '').join('|') : media.e.currentSrc || media.e.src || media.e.tagName}|${Math.round(media.r.width)}x${Math.round(media.r.height)}`);
+        // a canvas has no src: sample its pixels so a new puzzle gives a new fingerprint
+        const pix = (e) => { try { const u = e.toDataURL(); return `${u.length}:${u.slice(-300)}`; } catch { return e.tagName; } };
+        const id = (e) => e.currentSrc || e.src || (e.tagName === 'CANVAS' ? pix(e) : e.tagName);
+        out.fingerprint = hash(`${tiles && tiles.length >= 4 ? tiles.map((t) => id(t.e)).join('|') : id(media.e)}|${Math.round(media.r.width)}x${Math.round(media.r.height)}`);
       } else out.fingerprint = hash(`${root.querySelectorAll('img, canvas').length}|${root.offsetWidth}x${root.offsetHeight}`);
-      const btn = [...root.querySelectorAll('button, input[type=submit], input[type=button], [role=button]')]
+      const btn = deepAll(root, 'button, input[type=submit], input[type=button], [role=button]')
         .find((b) => visible(b) && /^(verify|submit|confirm|done|check|continue|next)\b/i.test(textOf(b)));
       if (btn) { const r = btn.getBoundingClientRect(); out.confirm = { x: (r.left + r.width / 2) / viewport.width, y: (r.top + r.height / 2) / viewport.height }; }
       // what to choose ("Choose all the clocks"), and the part of the page worth showing: prompt .. tiles .. confirm button
-      const ask = [...root.querySelectorAll('p, h1, h2, h3, h4, div, span, label')].filter((e) => visible(e) && e.children.length < 4)
-        .find((e) => /^(choose|select|click|pick|tap)\b.{3,100}$/i.test((e.innerText || '').trim().split('\n')[0]) && (e.innerText || '').trim().length < 120);
+      const ask = deepAll(root, 'p, h1, h2, h3, h4, div, span, label').filter((e) => visible(e) && e.children.length < 4)
+        .filter((e) => /^(choose|select|click|pick|tap)\b.{3,100}$/i.test((e.innerText || '').trim().split('\n')[0]) && (e.innerText || '').trim().length < 120)
+        .sort((a, b) => (a.innerText || '').length - (b.innerText || '').length)[0]; // the tightest match, not a wrapper around the canvas
       if (ask) out.prompt = ask.innerText.trim().replace(/\s+/g, ' ');
       const boxes = [out.region && media.r, ask && ask.getBoundingClientRect(), btn && btn.getBoundingClientRect()].filter(Boolean);
       if (boxes.length && out.region) {
@@ -62,18 +70,35 @@ export function pageFn({ op, arg }) {
         const R = Math.min(viewport.width, Math.max(...boxes.map((r) => r.right)) + pad), B = Math.min(viewport.height, Math.max(...boxes.map((r) => r.bottom)) + pad);
         out.view = { x: L / viewport.width, y: T / viewport.height, w: (R - L) / viewport.width, h: (B - T) / viewport.height };
       }
-      const text = (root.innerText || '').toLowerCase();
-      out.expired = /expired|timed out|time ran out|session has ended/.test(text);
+      const text = deepText(root).toLowerCase();
+      out.expired = /expired|timed out|time ran out|time limit exceeded|session has ended/.test(text);
       out.error = /incorrect|wrong|try again|not correct|failed|didn.t match/.test(text);
       return out;
     },
 
     // Fallback click for drivers without a real mouse: the element under a viewport point gets the usual event sequence.
     clickAt: ({ x, y }) => {
-      const el = document.elementFromPoint(x, y);
+      let el = document.elementFromPoint(x, y);
+      while (el?.shadowRoot) { const inner = el.shadowRoot.elementFromPoint(x, y); if (!inner || inner === el) break; el = inner; } // into <awswaf-captcha>
       if (!el) return false;
-      const init = { bubbles: true, cancelable: true, clientX: x, clientY: y, view: window };
-      for (const t of ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click']) el.dispatchEvent(new (t.startsWith('pointer') ? PointerEvent : MouseEvent)(t, init));
+      const base = { bubbles: true, cancelable: true, composed: true, clientX: x, clientY: y, screenX: x + (screenX || 0), screenY: y + (screenY || 0), button: 0, view: window };
+      const ptr = { pointerId: 1, pointerType: 'mouse', isPrimary: true, width: 1, height: 1, pressure: 0 };
+      const fire = (t, extra = {}) => el.dispatchEvent(new (t.startsWith('pointer') ? PointerEvent : MouseEvent)(t, t.startsWith('pointer') ? { ...base, ...ptr, ...extra } : { ...base, ...extra }));
+      for (const t of ['pointerover', 'mouseover', 'pointermove', 'mousemove']) fire(t, { buttons: 0 });
+      fire('pointerdown', { buttons: 1, pressure: 0.5 }); fire('mousedown', { buttons: 1 });
+      fire('pointerup', { buttons: 0 }); fire('mouseup', { buttons: 0 });
+      fire('click', { buttons: 0 }); // the canvas reads offsetX/Y of this event, which the browser derives from clientX/Y
+      return true;
+    },
+
+    // Presses the challenge's own Confirm button by element (it lives in the captcha's shadow root), for drivers whose real
+    // mouse is unavailable. A synthetic .click() on a submit button still submits the form.
+    clickConfirm: () => {
+      const deep = (node) => [...node.querySelectorAll('button, input[type=submit], [role=button]'), ...[...node.querySelectorAll('*')].filter((h) => h.shadowRoot).flatMap((h) => deep(h.shadowRoot))];
+      const modal = [...document.querySelectorAll('.captcha-modal')].find((e) => e.style.display === 'block' || e.offsetWidth > 0) || document.body;
+      const b = deep(modal).find((x) => visible(x) && /^(verify|submit|confirm|done|check|continue|next)\b/i.test(textOf(x)));
+      if (!b) return false;
+      b.click();
       return true;
     },
 
