@@ -176,10 +176,20 @@ export class Bot {
     await this.context.addInitScript(dom.INIT_SCRIPT);
     this.attach();
     await this.go(this.searchUrl);
-    let lastStep = -2;
+    let lastStep = -2, sawLogin = false, lastSave = Date.now();
     while (!this.stopped) {
       try {
         const step = this.step();
+        if (step === 3) sawLogin = true;
+        // `jobbot login`: once the login page hands back to the hiring site, the session is saved and we are done.
+        if (this.opts.loginOnly && sawLogin && step !== 3 && /^hiring\.amazon\./.test(this.url().hostname)) {
+          await new Promise((r) => setTimeout(r, 3000));
+          await this.opts.saveState();
+          this.log('logged in');
+          this.stopped = true;
+          break;
+        }
+        if (!this.opts.loginOnly && Date.now() - lastSave > 60000) { lastSave = Date.now(); await this.opts.saveState().catch(() => {}); }
         if (step !== lastStep) { lastStep = step; if (step >= 0) { this.log(`step ${step + 1}/4 ${STEPS[step]}`); await this.shot(STEPS[step].toLowerCase()); } }
         await this.tick();
       } catch (e) {

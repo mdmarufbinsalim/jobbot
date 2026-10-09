@@ -4,13 +4,17 @@ Local-only Playwright port of the Jobbot extension (`../extension`, which stays 
 
 ## Run locally
     npm i && npx playwright install chromium
-    npm start                                  # = node bin/jobbot.js run: visible browser, screenshots to ./shots, KYC links to ./out
-    node bin/jobbot.js run --headless          # no window (Amazon may block headless browsers)
+    npm run login                              # once: log in (automatic, you only handle a captcha) and save the session
+    npm start                                  # = node bin/jobbot.js run: reuses the saved session, screenshots to ./shots, KYC links to ./out
+    node bin/jobbot.js run --headless          # no window. Amazon currently answers headless browsers with a CloudFront 403, so use the visible window
     node bin/jobbot.js run --site com --once   # other site, stop after one KYC link
 
 Keys while running: `p` pause · `r` resume/retry · `s` screenshot · `n` restart · `q` quit.
 Screenshots (default `./shots`, `--no-shots` to turn off) are saved on every step change, captcha, stuck state and KYC link, or on demand with `s`.
 KYC links are appended to `<out>/kyc-links.txt`.
+
+## Saved session
+`login` and `run` share `~/.config/jobbot/state.json` (cookies and storage, mode 600, never committed). `run` refreshes it every minute and on exit; delete it to force a fresh login.
 
 ## Account details
 `JOBBOT_PHONE`, `JOBBOT_PIN`, `JOBBOT_SMS_URL`, or `config.local.json` (gitignored):
