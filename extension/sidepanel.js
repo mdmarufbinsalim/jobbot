@@ -142,7 +142,8 @@ function paintSettings() {
   const mode = st.mode === 'remote' ? 'remote' : 'local';
   for (const r of document.querySelectorAll('[name=mode]')) r.checked = r.value === mode;
   $('remoteFields').hidden = mode !== 'remote';
-  for (const id of ['serverUrl', 'serverToken']) if (document.activeElement !== $(id)) $(id).value = st[id] || '';
+  if (document.activeElement !== $('serverUrl')) $('serverUrl').value = st.serverUrl || 'http://127.0.0.1:8787';
+  if (document.activeElement !== $('serverToken')) $('serverToken').value = st.serverToken || '';
   $('continuous').checked = st.continuous !== false;
   const site = st.site === 'com' ? 'com' : 'ca';
   for (const r of document.querySelectorAll('[name=mode]')) r.onchange = () => chrome.storage.local.set({ mode: r.value });

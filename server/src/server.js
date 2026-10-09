@@ -4,15 +4,19 @@ import crypto from 'node:crypto';
 const MAX_BODY = 2 * 1024 * 1024;
 const sha = (s) => crypto.createHash('sha256').update(String(s)).digest();
 
-// HTTP control plane for a running bot: the extension (or curl) drives it with a bearer token.
+// HTTP control plane for a running bot. No token is needed on localhost; instead it only answers
+//  - requests without an Origin header (the CLI, curl) or from a chrome-extension:// page, never from a website, and
+//  - requests whose Host is localhost / 127.0.0.1 (blocks DNS rebinding).
+// When listening on a non-local address a bearer token is mandatory (the caller refuses to start without one).
 export function startServer({ runtime, token, host, port, say }) {
   const { controller, settings } = runtime;
-  const want = sha(token);
+  const want = token ? sha(token) : null;
+  const LOCAL_HOST = /^(127\.0\.0\.1|localhost|\[::1\])(:\d+)?$/i;
 
-  const send = (res, code, body, type = 'application/json') => {
+  const send = (res, code, body, type = 'application/json', origin = '') => {
     res.writeHead(code, {
       'Content-Type': type,
-      'Access-Control-Allow-Origin': '*',
+      ...(origin ? { 'Access-Control-Allow-Origin': origin, Vary: 'Origin' } : {}),
       'Access-Control-Allow-Headers': 'Authorization, Content-Type',
       'Access-Control-Allow-Methods': 'GET, POST, PUT, OPTIONS',
       'Cache-Control': 'no-store',
@@ -43,26 +47,33 @@ export function startServer({ runtime, token, host, port, say }) {
   };
 
   const server = http.createServer(async (req, res) => {
+    const origin = req.headers.origin || '';
+    const okOrigin = origin.startsWith('chrome-extension://') ? origin : '';
+    const reply = (code, body, type) => send(res, code, body, type, okOrigin);
     try {
-      if (req.method === 'OPTIONS') return send(res, 204, '');
+      if (origin && !okOrigin) return reply(403, { error: 'forbidden origin' });
+      if (!want && !LOCAL_HOST.test(req.headers.host || '')) return reply(403, { error: 'forbidden host' });
+      if (req.method === 'OPTIONS') return reply(204, '');
       const route = `${req.method} ${new URL(req.url, 'http://x').pathname}`;
-      if (route === 'GET /health') return send(res, 200, { ok: true });
-      const given = /^Bearer (.+)$/.exec(req.headers.authorization || '')?.[1];
-      if (!given || !crypto.timingSafeEqual(sha(given), want)) {
-        await new Promise((r) => setTimeout(r, 400)); // slow down guessing
-        return send(res, 401, { error: 'unauthorized' });
+      if (route === 'GET /health') return reply(200, { ok: true });
+      if (want) {
+        const given = /^Bearer (.+)$/.exec(req.headers.authorization || '')?.[1];
+        if (!given || !crypto.timingSafeEqual(sha(given), want)) {
+          await new Promise((r) => setTimeout(r, 400)); // slow down guessing
+          return reply(401, { error: 'unauthorized' });
+        }
       }
       if (route === 'GET /screenshot') {
         const data = await controller.screenshot();
-        if (!data) return send(res, 404, { error: 'no screenshot yet' });
-        return send(res, 200, Buffer.from(data.split(',')[1], 'base64'), 'image/png');
+        if (!data) return reply(404, { error: 'no screenshot yet' });
+        return reply(200, Buffer.from(data.split(',')[1], 'base64'), 'image/png');
       }
       const fn = routes[route];
-      if (!fn) return send(res, 404, { error: 'not found' });
-      send(res, 200, await fn(req));
+      if (!fn) return reply(404, { error: 'not found' });
+      reply(200, await fn(req));
     } catch (e) {
       say(`api error: ${e.message}`);
-      send(res, e.message === 'invalid JSON' || /required|not allowed|must be/.test(e.message) ? 400 : 500, { error: e.message });
+      reply(e.message === 'invalid JSON' || /required|not allowed|must be/.test(e.message) ? 400 : 500, { error: e.message });
     }
   });
   return new Promise((resolve) => server.listen(port, host, () => resolve(server)));

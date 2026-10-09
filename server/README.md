@@ -25,7 +25,7 @@ For now the bot takes a screenshot and waits. To plug in a solver service, pass 
 `{ async solve({ page, screenshot, log }) { …; return true; } }`; returning true lets the flow continue.
 
 ## Server API (`jobbot serve`)
-`Authorization: Bearer <token>` on everything except `GET /health`. Default `127.0.0.1:8787`, headless (`--headed` to show the window).
+No token on localhost (default `127.0.0.1:8787`, headless; `--headed` to show the window): only the CLI/curl and `chrome-extension://` pages are answered, websites and foreign Host headers get 403. With `--host` beyond localhost a `--token` is mandatory and every request needs `Authorization: Bearer <token>`.
 
 | Route | |
 |---|---|

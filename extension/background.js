@@ -12,7 +12,8 @@ async function localDefaults() {
 
 const SEARCH_URLS = { ca: 'https://hiring.amazon.ca/app#/jobSearch', com: 'https://hiring.amazon.com/app#/jobSearch' };
 const HIRING_TABS = ['https://*.hiring.amazon.ca/*', 'https://*.hiring.amazon.com/*'];
-const KEYS = ['site', 'continuous', 'loginPhone', 'loginPin', 'smsUrl'];
+const DEFAULT_SERVER_URL = 'http://127.0.0.1:8787'; // editable in Settings → Run on → Server URL
+const serverUrl = () => (store.serverUrl || DEFAULT_SERVER_URL).replace(/\/+$/, '');
 
 // --- settings cache (config() must be synchronous) ---
 let cfg = { site: 'ca', continuous: true, loginPhone: '', loginPin: '', smsUrl: '' };
@@ -106,11 +107,10 @@ chrome.runtime.onMessage.addListener((msg, sender) => {
 
 // --- remote mode: the same commands over HTTP ---
 async function api(path, method = 'GET', body) {
-  const url = (store.serverUrl || '').replace(/\/+$/, '');
-  if (!url) throw new Error('Set the server URL in Settings');
-  const r = await fetch(url + path, {
+  const r = await fetch(serverUrl() + path, {
     method,
-    headers: { Authorization: `Bearer ${store.serverToken || ''}`, ...(body ? { 'Content-Type': 'application/json' } : {}) },
+    // the token is optional: only a server listening beyond localhost asks for one
+    headers: { ...(store.serverToken ? { Authorization: `Bearer ${store.serverToken}` } : {}), ...(body ? { 'Content-Type': 'application/json' } : {}) },
     body: body ? JSON.stringify(body) : undefined,
     signal: AbortSignal.timeout(10000),
   });
@@ -162,12 +162,10 @@ const commands = {
     return { dataUrl: `data:image/png;base64,${btoa(bin)}` };
   },
   async test() {
-    const url = (store.serverUrl || '').replace(/\/+$/, '');
-    if (!url) throw new Error('Set the server URL first');
-    const health = await fetch(`${url}/health`, { signal: AbortSignal.timeout(6000) }).then((r) => r.json());
-    if (!health.ok) throw new Error('Not a jobbot server');
-    const s = await apiJson('/status'); // proves the token works
-    return { message: `Connected. Server is ${s.running ? 'running' : 'idle'}.` };
+    const health = await fetch(`${serverUrl()}/health`, { signal: AbortSignal.timeout(6000) }).then((r) => r.json()).catch(() => null);
+    if (!health?.ok) throw new Error(`No jobbot server at ${serverUrl()}. Start it with: jobbot up`);
+    const s = await apiJson('/status'); // also proves the token (if one is needed) is right
+    return { message: `Connected to ${serverUrl()}. The bot is ${s.running ? 'running' : 'idle'}.` };
   },
   // Sends this browser's login for the hiring sites (and the account settings) to the server, so it starts logged in.
   async syncSession() {

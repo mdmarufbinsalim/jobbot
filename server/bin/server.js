@@ -32,7 +32,7 @@ Options
 serve only
   --host <addr>          Interface to listen on (default 127.0.0.1; 0.0.0.0 to accept remote connections)
   --port <n>             Port (default 8787)
-  --token <secret>       API token (default: JOBBOT_TOKEN, or generated once and kept in ~/.config/jobbot/token)
+  --token <secret>       API token. Not needed on localhost; required with --host 0.0.0.0 (or JOBBOT_TOKEN)
 
 Keyboard while running (run/login):  p pause · r resume · s screenshot · n restart · q quit
 
@@ -68,23 +68,16 @@ const runtime = createRuntime({
 const { controller, say } = runtime;
 
 if (cmd === 'serve') {
-  const tokenFile = path.join(os.homedir(), '.config/jobbot/token');
-  let token = v.token || process.env.JOBBOT_TOKEN, fresh = false;
-  if (!token) {
-    try { token = fs.readFileSync(tokenFile, 'utf8').trim(); } catch {}
-    if (!token) {
-      token = crypto.randomBytes(24).toString('hex'); fresh = true;
-      fs.mkdirSync(path.dirname(tokenFile), { recursive: true });
-      fs.writeFileSync(tokenFile, token, { mode: 0o600 });
-    }
-  }
+  const token = v.token || process.env.JOBBOT_TOKEN || ''; // optional: only needed when listening beyond localhost
+  const local = ['127.0.0.1', 'localhost', '::1'].includes(v.host);
+  if (!local && !token) { console.error(`Refusing to listen on ${v.host} without a token. Pass --token <secret> (or JOBBOT_TOKEN), or use the default 127.0.0.1.`); process.exit(1); }
   const port = Number(v.port);
   await startServer({ runtime, token, host: v.host, port, say });
   say(`API listening on http://${v.host}:${port} (browser: ${v.headed ? 'headed' : 'headless'})`);
   // never print a token that already exists (service logs end up in journald); a brand-new one is shown once
-  say(fresh ? `token (new, saved to ${tokenFile}): ${token}` : 'token: configured (JOBBOT_TOKEN / --token / ~/.config/jobbot/token)');
+  say(token ? 'auth: bearer token required' : 'auth: none needed (localhost only; websites are rejected)');
   if (v.host !== '127.0.0.1' && v.host !== 'localhost') say('warning: this is plain HTTP; put it behind TLS or an SSH tunnel before exposing it');
-  say('waiting for Start from the extension (or: curl -X POST -H "Authorization: Bearer <token>" http://host:port/start)');
+  say('waiting for Start from the extension (or: curl -X POST http://host:port/start)');
   const quit = async () => { await controller.stop(); process.exit(0); };
   process.on('SIGINT', quit); process.on('SIGTERM', quit);
 } else {

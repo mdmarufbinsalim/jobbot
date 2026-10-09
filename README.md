@@ -22,9 +22,12 @@ Change a rule once, there.
     jobbot shot                     # screenshot of the bot's tab
     jobbot down                     # stop the server
 
-Extension: `chrome://extensions` → Developer mode → Load unpacked → `extension/`. Settings → **Run on** → *Remote server*, URL
-`http://127.0.0.1:8787`, token from `~/.config/jobbot/token`; log in on the site in your Chrome and press **Sync session**.
-For a VPS use an SSH tunnel or an HTTPS reverse proxy (plain HTTP + bearer token) and `jobbot --url … --token …`.
+Extension: `chrome://extensions` → Developer mode → Load unpacked → `extension/`. Settings → **Run on** → *Remote server*
+(the URL is preset to `http://127.0.0.1:8787`; no token needed); log in on the site in your Chrome and press **Sync session**.
+
+**Auth:** no token on localhost. The server then only answers the CLI/curl and `chrome-extension://` pages (never websites, never a foreign
+Host header), and it refuses to listen on a non-local address unless you pass `--token`. The CLI's server URL defaults to
+`http://127.0.0.1:8787` (`--url` or `JOBBOT_URL` to change it).
 
 **Where to run the server:** on a machine with a normal home or office connection. Amazon's CloudFront answers requests from datacenter
 IPs (a VPS) with a 403 "Request blocked" for `hiring.amazon.*`, while the same code works from a home connection. Run `jobbot up` on your own machine,

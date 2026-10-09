@@ -13,7 +13,7 @@ const SERVER_BIN = path.resolve(HERE, '../../server/bin/server.js');
 const CONF = path.join(os.homedir(), '.config/jobbot');
 const PID_FILE = path.join(CONF, 'server.pid');
 const LOG_FILE = path.join(CONF, 'server.log');
-const TOKEN_FILE = path.join(CONF, 'token');
+const DEFAULT_URL = 'http://127.0.0.1:8787'; // change with --url or JOBBOT_URL
 
 const HELP = `jobbot <command> [options]
 
@@ -36,8 +36,8 @@ Server (the process that owns the browser; runs in the background)
   serve                                             run it in the foreground
 
 Options
-  --url <http://host:port>   server to control (default $JOBBOT_URL or http://127.0.0.1:8787)
-  --token <secret>           API token (default $JOBBOT_TOKEN or ~/.config/jobbot/token)
+  --url <http://host:port>   server to control (default http://127.0.0.1:8787, or $JOBBOT_URL)
+  --token <secret>           only for a server that was started with a token ($JOBBOT_TOKEN)
 `;
 
 const { values: v, positionals: pos } = parseArgs({
@@ -53,8 +53,10 @@ let [cmd, sub, arg] = pos;
 if (cmd === 'server') { cmd = { start: 'up', stop: 'down', status: 'ps', logs: 'logs', run: 'serve' }[sub] || 'server'; sub = arg; arg = pos[3]; }
 if (v.help || !cmd) { console.log(HELP); process.exit(cmd || v.help ? 0 : 1); }
 
-const BASE = (v.url || process.env.JOBBOT_URL || `http://${v.host === '0.0.0.0' ? '127.0.0.1' : v.host}:${v.port}`).replace(/\/+$/, '');
-const token = () => v.token || process.env.JOBBOT_TOKEN || (fs.existsSync(TOKEN_FILE) ? fs.readFileSync(TOKEN_FILE, 'utf8').trim() : '');
+// `up --port/--host` starts a server elsewhere than the default, so talk to that one in the same command
+const BASE = (v.url || process.env.JOBBOT_URL || (pos[0] === 'up' || pos[0] === 'serve' ? `http://${v.host === '0.0.0.0' ? '127.0.0.1' : v.host}:${v.port}` : DEFAULT_URL)).replace(/\/+$/, '');
+const token = () => v.token || process.env.JOBBOT_TOKEN || '';   // optional; only a server listening beyond localhost needs one
+const authHeader = () => (token() ? { Authorization: `Bearer ${token()}` } : {});
 const die = (m) => { console.error(m); process.exit(1); };
 
 async function call(route, method = 'GET', body, raw = false) {
@@ -62,12 +64,12 @@ async function call(route, method = 'GET', body, raw = false) {
   try {
     r = await fetch(BASE + route, {
       method,
-      headers: { Authorization: `Bearer ${token()}`, ...(body ? { 'Content-Type': 'application/json' } : {}) },
+      headers: { ...authHeader(), ...(body ? { 'Content-Type': 'application/json' } : {}) },
       body: body ? JSON.stringify(body) : undefined,
       signal: AbortSignal.timeout(15000),
     });
   } catch { die(`Cannot reach the server at ${BASE}. Start it with: jobbot server start`); }
-  if (r.status === 401) die('The server rejected the token (use --token, JOBBOT_TOKEN or ~/.config/jobbot/token).');
+  if (r.status === 401) die('This server needs a token: pass --token <secret> or set JOBBOT_TOKEN.');
   if (!r.ok) die(`Server error: ${(await r.json().catch(() => ({}))).error || r.status}`);
   return raw ? Buffer.from(await r.arrayBuffer()) : r.json();
 }
@@ -125,7 +127,7 @@ async function serverStart() {
 }
 
 async function serverStop() {
-  if (await healthy()) await fetch(`${BASE}/stop`, { method: 'POST', headers: { Authorization: `Bearer ${token()}` } }).catch(() => {});
+  if (await healthy()) await fetch(`${BASE}/stop`, { method: 'POST', headers: authHeader() }).catch(() => {});
   const pid = readPid();
   if (pid && alive(pid)) {
     process.kill(pid, 'SIGTERM');
@@ -145,7 +147,7 @@ const run = {
   async ps() {
     const up = await healthy(), pid = v.url ? 0 : readPid();
     console.log(`server   ${up ? 'up' : 'down'}  ${BASE}${pid && alive(pid) ? `  pid ${pid}` : ''}`);
-    if (up && token()) console.log(`\n${summary(await call('/status'))}`);
+    if (up) console.log(`\n${summary(await call('/status'))}`);
   },
   async serve() { return new Promise((r) => spawn(process.execPath, [SERVER_BIN, 'serve', '--port', v.port, '--host', v.host, ...(v.headed ? ['--headed'] : [])], { stdio: 'inherit' }).on('exit', r)); },
   async logs() {

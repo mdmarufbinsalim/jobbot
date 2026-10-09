@@ -18,5 +18,5 @@ Controls a Jobbot server (`../server`) over HTTP. Needs Node 20+, nothing to ins
     jobbot ps                                                 server up/down, pid, and what the bot is doing
     jobbot serve                                              run the server in the foreground
 
-Remote server: `jobbot --url https://host --token SECRET status`, or set `JOBBOT_URL` / `JOBBOT_TOKEN`. Locally the token is read
-from `~/.config/jobbot/token`, which the server creates on first start.
+Server URL: built in as `http://127.0.0.1:8787`; change it per command with `--url` or globally with `JOBBOT_URL`. No token is needed locally;
+`--token` / `JOBBOT_TOKEN` is only for a server started with `--token` (required when it listens beyond localhost).
