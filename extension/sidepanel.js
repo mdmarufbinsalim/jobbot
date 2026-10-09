@@ -164,7 +164,7 @@ $('shotBtn').onclick = async () => {
 setInterval(() => { if (st.mode === 'remote') chrome.runtime.sendMessage({ type: 'ctl', cmd: 'status' }).catch(() => {}); }, 2000);
 
 for (const r of document.querySelectorAll('[name=site]')) r.checked = r.value === site;
-  for (const id of ['loginPhone', 'loginPin', 'smsUrl']) if (document.activeElement !== $(id)) $(id).value = st[id] || '';
+  for (const id of ['loginPhone', 'loginPin', 'smsUrl', 'geminiKey']) if (document.activeElement !== $(id)) $(id).value = st[id] || '';
 }
 
 function paintOverview() {
@@ -230,7 +230,7 @@ $('restart').onclick = () => ctl('restart');
 $('kycClear').onclick = () => ctl('clearKyc');
 for (const id of ['continuous']) $(id).onchange = (e) => chrome.storage.local.set({ [id]: e.target.checked });
 let savedTimer;
-for (const id of ['loginPhone', 'loginPin', 'smsUrl']) $(id).oninput = (e) => {
+for (const id of ['loginPhone', 'loginPin', 'smsUrl', 'geminiKey']) $(id).oninput = (e) => {
   chrome.storage.local.set({ [id]: e.target.value.trim() });
   $('saved').classList.add('show'); clearTimeout(savedTimer);
   savedTimer = setTimeout(() => $('saved').classList.remove('show'), 1200);

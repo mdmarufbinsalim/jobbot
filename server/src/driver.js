@@ -23,6 +23,7 @@ export class PlaywrightDriver {
   goto(url) { return this.page.goto(url, { waitUntil: 'domcontentloaded', timeout: 20000 }); }
   reload() { return this.page.reload({ waitUntil: 'domcontentloaded', timeout: 20000 }); }
   evaluate(fn, arg) { return this.page.evaluate(fn, arg); }
+  click(x, y) { return this.page.mouse.click(x, y); } // a real mouse click at viewport CSS pixels
   async screenshot() { return `data:image/png;base64,${(await this.page.screenshot()).toString('base64')}`; }
   async openTab(url) {
     const t = await this.context.newPage();

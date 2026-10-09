@@ -21,6 +21,62 @@ export function pageFn({ op, arg }) {
     captchaVisible: () => [...document.querySelectorAll('.captcha-modal')].some((e) =>
       e.style.display === 'block' || (getComputedStyle(e).display === 'block' && e.offsetWidth > 0 && e.offsetHeight > 0)),
 
+    // Everything the tile-challenge modules need to know about the page, in viewport CSS pixels. Reports hashes, not the
+    // challenge's own URLs or text.
+    captchaProbe: () => {
+      const hash = (str) => { let h = 5381; for (let i = 0; i < str.length; i++) h = ((h << 5) + h + str.charCodeAt(i)) | 0; return (h >>> 0).toString(36); };
+      const viewport = { width: innerWidth, height: innerHeight, dpr: devicePixelRatio || 1, scrollX: Math.round(scrollX), scrollY: Math.round(scrollY) };
+      // the modal, or the full-page "Let's confirm you are human" once Begin has been pressed and the tiles are showing
+      const begin = [...document.querySelectorAll('button, input[type=submit], input[type=button], a, [role=button]')].find((b) => visible(b) && /^begin\b/i.test(textOf(b)));
+      const humanPage = /confirm you are human/i.test(document.body.innerText) && !begin;
+      const root = [...document.querySelectorAll('.captcha-modal')].find((e) =>
+        e.style.display === 'block' || (getComputedStyle(e).display === 'block' && e.offsetWidth > 0 && e.offsetHeight > 0)) || (humanPage ? document.body : null);
+      const out = { visible: !!root, viewport, url: location.origin + location.pathname, region: null, confirm: null, error: false, expired: false, fingerprint: '', prompt: '', view: null };
+      if (!root) return out;
+      const rect = (r) => ({ x: r.left / viewport.width, y: r.top / viewport.height, w: r.width / viewport.width, h: r.height / viewport.height });
+      const all = [...root.querySelectorAll('img, canvas, svg')].filter(visible).map((e) => ({ e, r: e.getBoundingClientRect() })).filter((m) => m.r.width >= 40 && m.r.height >= 40);
+      // a grid of tiles = the most common image size (at least 4 of them); the region is their bounding box
+      const bySize = new Map();
+      for (const m of all) { const k = `${Math.round(m.r.width / 4)}x${Math.round(m.r.height / 4)}`; bySize.set(k, [...(bySize.get(k) || []), m]); }
+      const tiles = [...bySize.values()].sort((a, b) => b.length - a.length)[0];
+      let media = all.slice().sort((a, b) => b.r.width * b.r.height - a.r.width * a.r.height)[0];
+      if (tiles && tiles.length >= 4) {
+        const L = Math.min(...tiles.map((t) => t.r.left)), T = Math.min(...tiles.map((t) => t.r.top)), R = Math.max(...tiles.map((t) => t.r.right)), B = Math.max(...tiles.map((t) => t.r.bottom));
+        media = { e: tiles[0].e, r: { left: L, top: T, right: R, bottom: B, width: R - L, height: B - T } };
+        out.tiles = tiles.length;
+      }
+      if (media && media.r.left >= 0 && media.r.top >= 0 && media.r.right <= viewport.width && media.r.bottom <= viewport.height) {
+        out.region = rect(media.r);
+        out.fingerprint = hash(`${tiles && tiles.length >= 4 ? tiles.map((t) => t.e.currentSrc || t.e.src || '').join('|') : media.e.currentSrc || media.e.src || media.e.tagName}|${Math.round(media.r.width)}x${Math.round(media.r.height)}`);
+      } else out.fingerprint = hash(`${root.querySelectorAll('img, canvas').length}|${root.offsetWidth}x${root.offsetHeight}`);
+      const btn = [...root.querySelectorAll('button, input[type=submit], input[type=button], [role=button]')]
+        .find((b) => visible(b) && /^(verify|submit|confirm|done|check|continue|next)\b/i.test(textOf(b)));
+      if (btn) { const r = btn.getBoundingClientRect(); out.confirm = { x: (r.left + r.width / 2) / viewport.width, y: (r.top + r.height / 2) / viewport.height }; }
+      // what to choose ("Choose all the clocks"), and the part of the page worth showing: prompt .. tiles .. confirm button
+      const ask = [...root.querySelectorAll('p, h1, h2, h3, h4, div, span, label')].filter((e) => visible(e) && e.children.length < 4)
+        .find((e) => /^(choose|select|click|pick|tap)\b.{3,100}$/i.test((e.innerText || '').trim().split('\n')[0]) && (e.innerText || '').trim().length < 120);
+      if (ask) out.prompt = ask.innerText.trim().replace(/\s+/g, ' ');
+      const boxes = [out.region && media.r, ask && ask.getBoundingClientRect(), btn && btn.getBoundingClientRect()].filter(Boolean);
+      if (boxes.length && out.region) {
+        const pad = 12, L = Math.max(0, Math.min(...boxes.map((r) => r.left)) - pad), T = Math.max(0, Math.min(...boxes.map((r) => r.top)) - pad);
+        const R = Math.min(viewport.width, Math.max(...boxes.map((r) => r.right)) + pad), B = Math.min(viewport.height, Math.max(...boxes.map((r) => r.bottom)) + pad);
+        out.view = { x: L / viewport.width, y: T / viewport.height, w: (R - L) / viewport.width, h: (B - T) / viewport.height };
+      }
+      const text = (root.innerText || '').toLowerCase();
+      out.expired = /expired|timed out|time ran out|session has ended/.test(text);
+      out.error = /incorrect|wrong|try again|not correct|failed|didn.t match/.test(text);
+      return out;
+    },
+
+    // Fallback click for drivers without a real mouse: the element under a viewport point gets the usual event sequence.
+    clickAt: ({ x, y }) => {
+      const el = document.elementFromPoint(x, y);
+      if (!el) return false;
+      const init = { bubbles: true, cancelable: true, clientX: x, clientY: y, view: window };
+      for (const t of ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click']) el.dispatchEvent(new (t.startsWith('pointer') ? PointerEvent : MouseEvent)(t, init));
+      return true;
+    },
+
     // Amazon's "Let's confirm you are human" interstitial: press Begin to start the check. (Solving it is up to a person or a solver.)
     clickBegin: () => {
       const b = [...document.querySelectorAll('button, input[type=submit], input[type=button], a, [role=button]')]

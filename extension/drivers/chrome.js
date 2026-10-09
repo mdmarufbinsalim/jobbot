@@ -25,6 +25,19 @@ export class ChromeDriver {
   reload() { return chrome.tabs.reload(this.tabId); }
   evaluate(fn, arg) { return run(this.tabId, fn, arg); }
 
+  // A real (trusted) mouse click at viewport CSS pixels through the debugger protocol. Throws if it cannot attach, e.g.
+  // DevTools is open on the tab; the caller then falls back to clicking from inside the page.
+  async click(x, y) {
+    const target = { tabId: this.tabId };
+    await chrome.debugger.attach(target, '1.3');
+    try {
+      const at = { x, y, button: 'left', clickCount: 1 };
+      await chrome.debugger.sendCommand(target, 'Input.dispatchMouseEvent', { type: 'mouseMoved', x, y });
+      await chrome.debugger.sendCommand(target, 'Input.dispatchMouseEvent', { type: 'mousePressed', ...at });
+      await chrome.debugger.sendCommand(target, 'Input.dispatchMouseEvent', { type: 'mouseReleased', ...at });
+    } finally { await chrome.debugger.detach(target).catch(() => {}); }
+  }
+
   // Only the visible tab of its window can be captured; otherwise there is nothing truthful to return.
   async screenshot() {
     const tab = await chrome.tabs.get(this.tabId);

@@ -8,11 +8,13 @@
     "sidePanel",
     "tabs",
     "scripting",
-    "cookies"
+    "cookies",
+    "debugger"
   ],
   "host_permissions": [
     "https://*.hiring.amazon.ca/*",
     "https://*.hiring.amazon.com/*",
+    "https://generativelanguage.googleapis.com/*",
     "https://temp-number.com/*",
     "https://www.temp-number.com/*",
     "https://*.amazon.in/remoteKYC*",

@@ -75,6 +75,7 @@ export class Controller {
 
   pause() { this.bot?.pause(); }
   resume() { this.bot?.resume(); }
+  retryCaptcha() { this.bot?.retryCaptcha(); }
   async restart() { await this.bot?.restart(); }
 
   // A screenshot of the working tab right now (works even without a shot sink).

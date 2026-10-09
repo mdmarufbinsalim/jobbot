@@ -6,16 +6,18 @@
 //   ctx.dom(op, arg) the shared in-page helpers in core/dom.js
 //   ctx.screenshot() asks the host to save a screenshot (returns the image only when the host saves them)
 //   ctx.log(text)    writes a log line (terminal / server log / extension service worker console)
+//   ctx.signal       AbortSignal: aborted when the bot is resumed or stopped, so a long wait must end
+//   ctx.kind         'captcha' (the tile challenge is showing) or 'human-check' (Begin was just pressed)
 // solve() returns true when the check is solved (the bot carries on at once). Anything else, or a throw, keeps the bot
 // holding until a person solves it and presses Resume.
 //
-// This version solves nothing: it only records that a check appeared and leaves it to a person.
+// Default solver: hands the tile challenge to a person through the side panel (see core/captcha/). Nothing is solved
+// automatically. Another solver can be swapped in with --captcha-solver.
+import { solveManually } from './captcha/manual-solver.js';
+
 export default {
-  name: 'solver',
-  async solve({ driver, log }) {
-    log(`solver: a check is showing on ${driver.url()}; leaving it to a person`);
-    return false;
-  },
+  name: 'manual-tiles',
+  solve: (ctx) => solveManually(ctx),
 };
 
 // Hosts call this on whatever module they load, so a malformed solver fails with a clear message instead of mid-run.

@@ -11,7 +11,7 @@ const stamp = () => new Date().toTimeString().slice(0, 8);
 // Wires the shared Controller to Playwright: a local Chromium, the saved-session file, screenshots and KYC links on disk.
 export function createRuntime(opts) {
   const settings = createSettings(opts.overrides || {});
-  let browser = null, saveTimer = null;
+  let browser = null, saveTimer = null, synced = false; // synced: a session was pushed since this server started
   const say = opts.quiet ? () => {} : (m) => console.log(`${stamp()} ${m}`);
 
   const controller = new Controller({
@@ -21,7 +21,7 @@ export function createRuntime(opts) {
     solver: opts.solver,
     onLoggedIn: async () => { await browser.save(); say(`session saved to ${opts.state}`); },
     async openDriver() {
-      browser = await open({ ...opts, site: settings.get().site });
+      browser = await open({ ...opts, site: settings.get().site, synced: () => synced });
       if (!opts.loginOnly) saveTimer = setInterval(() => browser?.save().catch(() => {}), 60000); // keep the session fresh
       return new PlaywrightDriver(browser.page, browser.context);
     },
@@ -51,6 +51,7 @@ export function createRuntime(opts) {
     fs.mkdirSync(path.dirname(opts.state), { recursive: true });
     fs.writeFileSync(opts.state, JSON.stringify(state), { mode: 0o600 });
     fs.chmodSync(opts.state, 0o600);
+    synced = true;
     if (wasRunning) await controller.start();
     return { cookies: state.cookies.length, origins: state.origins.length, dropped, restarted: wasRunning };
   }

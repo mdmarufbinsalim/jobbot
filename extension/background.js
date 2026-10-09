@@ -4,7 +4,9 @@ import { Controller } from './core/controller.js';
 import { pageFn } from './core/dom.js';
 import { SESSION_URLS, buildStorageState } from './core/session.js';
 import { ChromeDriver } from './drivers/chrome.js';
+import { hub } from './core/captcha/hub.js';
 import solver, { checkSolver } from './core/solver.js';
+import { geminiSolver } from './core/captcha/gemini-solver.js';
 
 // Local defaults (gitignored defaults.json): fill any setting that has never been saved.
 async function localDefaults() {
@@ -71,7 +73,11 @@ async function closeHiringTabs() {
 let driver = null;
 const controller = new Controller({
   log: (m) => console.log(`[jobbot] ${m}`),
-  solver: checkSolver(solver, 'core/solver.js'), // the shared solver contract
+  // The shared solver contract: the free Gemini solver with the key from Settings or the hard-coded one (it falls back to the manual panel on failure).
+  solver: checkSolver((() => {
+    const gemini = geminiSolver({ getKey: () => store.geminiKey, getModel: () => store.geminiModel });
+    return { name: 'auto', solve: (ctx) => gemini.solve(ctx) };
+  })(), 'core/solver.js'),
   config: () => cfg,
   onChange: (s) => { if (mode() === 'local') publish(s); },
   async openDriver() {
@@ -177,6 +183,12 @@ const commands = {
     const r = await apiJson('/session', 'PUT', state);
     return { message: `Synced ${r.cookies} cookies${r.restarted ? ' (server browser restarted)' : ''}.` };
   },
+  // The tile challenge: the panel reads it and sends back the confirmed selections (core/captcha/).
+  async captcha() { return { challenge: mode() === 'remote' ? (await apiJson('/captcha')).challenge : hub.view() }; },
+  async captchaAnswer({ answer }) {
+    if (mode() === 'remote') await apiJson('/captcha', 'POST', answer); else hub.respond(answer);
+  },
+  async captchaRetry() { if (mode() === 'remote') await apiJson('/captcha/retry', 'POST'); else controller.retryCaptcha(); },
   async clearKyc() {
     await chrome.storage.local.set({ kycClearedAt: Date.now() });
     controller.kyc = [];
@@ -186,7 +198,7 @@ const commands = {
 
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg?.type !== 'ctl' || !commands[msg.cmd]) return;
-  ready.then(() => commands[msg.cmd]()).then((r) => sendResponse({ ok: true, ...(r || {}) }), (e) => sendResponse({ ok: false, error: e.message }));
+  ready.then(() => commands[msg.cmd](msg)).then((r) => sendResponse({ ok: true, ...(r || {}) }), (e) => sendResponse({ ok: false, error: e.message }));
   return true;
 });
 

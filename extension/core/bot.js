@@ -34,7 +34,7 @@ export class Bot {
   constructor({ driver, host }) {
     this.driver = driver; this.host = host;
     this.log = (m) => host.log(m);
-    this.paused = false; this.stopped = false; this.stuck = false; this.captcha = false; this.captchaOverride = false;
+    this.paused = false; this.stopped = false; this.stuck = false; this.captcha = false; this.captchaOverride = false; this.solving = null;
     this.jobs = new Map(); this.firstId = null; this.schedule = null;
     this.nav = null;
     this.holdUntil = 0; // after pressing Begin on the human check, don't reload while it is being solved
@@ -192,6 +192,7 @@ export class Bot {
   pause() { this.paused = true; this.nav = null; this.status('Paused'); this.changed(); }
   resume() {
     this.paused = false; this.holdUntil = 0;
+    this.solving?.abort();
     if (this.captcha) this.captchaOverride = true; // carry on even if the modal is still up; it re-arms once it is gone
     this.captcha = false; this.clearRefreshes(); this.progress(); this.status('Resumed'); this.changed();
   }
@@ -201,7 +202,12 @@ export class Bot {
     await this.go(this.searchUrl);
     this.changed();
   }
-  stop() { this.stopped = true; }
+  // Open the solver again after a person left the captcha to the page (the panel's "Try again").
+  retryCaptcha() {
+    if (this.solving) return;
+    if (this.captcha) { this.captcha = false; this.changed(); } else if (this.beginClicked) this.retryHuman = true;
+  }
+  stop() { this.stopped = true; this.solving?.abort(); }
 
   // --- main loop ---
   async run({ navigate = true } = {}) {
@@ -277,17 +283,30 @@ export class Bot {
       await this.shot('captcha');
       if (this.host.solver) {
         try {
-          const ok = await this.host.solver.solve({ driver: this.driver, dom: (op, arg) => this.dom(op, arg), screenshot: () => this.shot('captcha-solver'), log: this.log });
-          if (ok) { this.captcha = false; this.progress(); this.changed(); return false; }
+          const ok = await this.runSolver('captcha', 'captcha-solver');
+          if (ok && !this.stopped) { this.captcha = false; this.progress(); this.changed(); return false; }
         } catch (e) { this.log(`captcha solver failed: ${e.message}`); }
       }
-      this.log('Waiting for the captcha to be solved (Resume to carry on)');
+      if (!this.captchaOverride && !this.stopped) this.log('Waiting for the captcha to be solved (Resume to carry on)');
     }
     return true; // holds every step while the modal is up
   }
 
+  // One solver call; it can be cancelled (Resume / Stop abort the signal) so a solver that waits for a person never outlives that.
+  async runSolver(kind, shotLabel) {
+    this.solving = new AbortController();
+    try {
+      return await this.host.solver.solve({ driver: this.driver, dom: (op, arg) => this.dom(op, arg), screenshot: () => this.shot(shotLabel), log: this.log, signal: this.solving.signal, kind });
+    } finally { this.solving = null; }
+  }
+
   // "Let's confirm you are human": press Begin, then leave the page alone for a while (a reload would restart the check).
   async humanCheck() {
+    if (this.retryHuman) {
+      this.retryHuman = false; this.holdUntil = Date.now() + 120000;
+      try { if (await this.runSolver('human-check', 'human-check-solver')) this.holdUntil = 0; } catch (e) { this.log(`solver failed: ${e.message}`); }
+      return true;
+    }
     if (Date.now() < this.holdUntil) {
       this.progress();
       this.status('Security check started, waiting for it to be solved');
@@ -300,7 +319,7 @@ export class Bot {
     await this.shot('human-check');
     if (this.host.solver) {
       try {
-        if (await this.host.solver.solve({ driver: this.driver, dom: (op, arg) => this.dom(op, arg), screenshot: () => this.shot('human-check-solver'), log: this.log })) this.holdUntil = 0;
+        if (await this.runSolver('human-check', 'human-check-solver')) this.holdUntil = 0;
       } catch (e) { this.log(`solver failed: ${e.message}`); }
     }
     return true;

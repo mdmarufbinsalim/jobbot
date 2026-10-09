@@ -27,6 +27,8 @@
     </div>
   </section>
 
+  <section class="sec captcha" id="captcha" hidden></section>
+
   <nav class="tabs" role="tablist">
     <button class="tab on" data-tab="overview" role="tab"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>Overview</button>
     <!-- GraphQL log tab, disabled for now
@@ -91,10 +93,12 @@
           <span class="pw"><input id="loginPin" type="password" autocomplete="off"><button type="button" class="eye" id="eye" title="Show PIN">Show</button></span>
         </label>
         <label>SMS inbox URL <input id="smsUrl" type="text" autocomplete="off" placeholder="https://temp-number.com/…"></label>
+        <label>Gemini API key (free captcha solver) <input id="geminiKey" type="password" autocomplete="off" placeholder="from aistudio.google.com/apikey"></label>
       </div>
-      <p class="hint">Saved only in this browser's extension storage, never in the code. A public temp-number inbox can be read by anyone, so only use it for accounts where that is acceptable.</p>
+      <p class="hint">Saved only in this browser's extension storage, never in the code. With a Gemini key set, captcha screenshots are sent to Google to be solved; leave it empty to solve them yourself. A public temp-number inbox can be read by anyone, so only use it for accounts where that is acceptable.</p>
     </div>
   </div>
 </main>
 <div class="toast" id="toast" role="status"></div>
 <script src="sidepanel.js"></script>
+<script type="module" src="captcha-ui.js"></script>

@@ -1,4 +1,5 @@
 import http from 'node:http';
+import { hub } from '../../extension/core/captcha/hub.js';
 
 const MAX_BODY = 2 * 1024 * 1024;
 
@@ -38,6 +39,9 @@ export function startServer({ runtime, host, port, say }) {
     'POST /stop': async () => { await controller.stop(); return publicStatus(); },
     'POST /pause': () => { controller.pause(); return publicStatus(); },
     'POST /resume': () => { controller.resume(); return publicStatus(); },
+    'GET /captcha': () => ({ challenge: hub.view() }),
+    'POST /captcha': async (req) => { hub.respond(await readJson(req)); return { ok: true }; },
+    'POST /captcha/retry': () => { controller.retryCaptcha(); return { ok: true }; },
     'POST /restart': async () => { await controller.restart(); return publicStatus(); },
     'PUT /config': async (req) => { settings.update(await readJson(req)); return publicStatus(); },
     'PUT /session': async (req) => ({ ok: true, ...(await runtime.applySession(await readJson(req))) }),
@@ -63,7 +67,7 @@ export function startServer({ runtime, host, port, say }) {
       reply(200, await fn(req));
     } catch (e) {
       say(`api error: ${e.message}`);
-      reply(e.message === 'invalid JSON' || /required|not allowed|must be/.test(e.message) ? 400 : 500, { error: e.message });
+      reply(e.message === 'invalid JSON' || /required|not allowed|must be|no longer|not waiting|selections|selected|tile|coordinates|grid|points?/.test(e.message) ? 400 : 500, { error: e.message });
     }
   });
   return new Promise((resolve) => server.listen(port, host, () => resolve(server)));

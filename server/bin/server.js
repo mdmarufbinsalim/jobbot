@@ -53,8 +53,10 @@ const cmd = positionals[0] || 'run';
 if (v.help || !['run', 'login', 'serve'].includes(cmd)) { console.log(HELP); process.exit(v.help ? 0 : 1); }
 if (v.site && !['ca', 'com'].includes(v.site)) { console.error('--site must be ca or com'); process.exit(1); }
 
-// The solver is always connected: the shared extension/core/solver.js unless --captcha-solver points elsewhere.
-const solverFile = v['captcha-solver'] ? path.resolve(v['captcha-solver']) : fileURLToPath(new URL('../../extension/core/solver.js', import.meta.url));
+// The solver is always connected: --captcha-solver if given, else the free Gemini solver (key from GEMINI_API_KEY, or the
+// temporary hard-coded one in gemini-solver.js). It hands over to the manual side-panel solver when Gemini fails.
+const solverFile = v['captcha-solver'] ? path.resolve(v['captcha-solver'])
+  : fileURLToPath(new URL('../src/gemini-solver.js', import.meta.url));
 const solver = checkSolver((await import(pathToFileURL(solverFile).href)).default, solverFile);
 console.log(`captcha solver: ${solver.name || 'unnamed'} (${solverFile})`);
 
