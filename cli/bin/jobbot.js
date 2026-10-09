@@ -143,7 +143,7 @@ const run = {
   async up() { return serverStart(); },
   async down() { return serverStop(); },
   async ps() {
-    const up = await healthy(), pid = readPid();
+    const up = await healthy(), pid = v.url ? 0 : readPid();
     console.log(`server   ${up ? 'up' : 'down'}  ${BASE}${pid && alive(pid) ? `  pid ${pid}` : ''}`);
     if (up && token()) console.log(`\n${summary(await call('/status'))}`);
   },

@@ -69,11 +69,11 @@ const { controller, say } = runtime;
 
 if (cmd === 'serve') {
   const tokenFile = path.join(os.homedir(), '.config/jobbot/token');
-  let token = v.token || process.env.JOBBOT_TOKEN;
+  let token = v.token || process.env.JOBBOT_TOKEN, fresh = false;
   if (!token) {
     try { token = fs.readFileSync(tokenFile, 'utf8').trim(); } catch {}
     if (!token) {
-      token = crypto.randomBytes(24).toString('hex');
+      token = crypto.randomBytes(24).toString('hex'); fresh = true;
       fs.mkdirSync(path.dirname(tokenFile), { recursive: true });
       fs.writeFileSync(tokenFile, token, { mode: 0o600 });
     }
@@ -81,7 +81,8 @@ if (cmd === 'serve') {
   const port = Number(v.port);
   await startServer({ runtime, token, host: v.host, port, say });
   say(`API listening on http://${v.host}:${port} (browser: ${v.headed ? 'headed' : 'headless'})`);
-  say(`token: ${token}`);
+  // never print a token that already exists (service logs end up in journald); a brand-new one is shown once
+  say(fresh ? `token (new, saved to ${tokenFile}): ${token}` : 'token: configured (JOBBOT_TOKEN / --token / ~/.config/jobbot/token)');
   if (v.host !== '127.0.0.1' && v.host !== 'localhost') say('warning: this is plain HTTP; put it behind TLS or an SSH tunnel before exposing it');
   say('waiting for Start from the extension (or: curl -X POST -H "Authorization: Bearer <token>" http://host:port/start)');
   const quit = async () => { await controller.stop(); process.exit(0); };
