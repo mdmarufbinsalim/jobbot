@@ -8,6 +8,7 @@
   },
   "scripts": {
     "login": "node bin/jobbot.js login",
+    "serve": "node bin/jobbot.js serve",
     "start": "node bin/jobbot.js run"
   },
   "engines": {
