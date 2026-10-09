@@ -4,6 +4,7 @@ import { Controller } from './core/controller.js';
 import { pageFn } from './core/dom.js';
 import { SESSION_URLS, buildStorageState } from './core/session.js';
 import { ChromeDriver } from './drivers/chrome.js';
+import solver, { checkSolver } from './core/solver.js';
 
 // Local defaults (gitignored defaults.json): fill any setting that has never been saved.
 async function localDefaults() {
@@ -70,6 +71,7 @@ async function closeHiringTabs() {
 let driver = null;
 const controller = new Controller({
   log: (m) => console.log(`[jobbot] ${m}`),
+  solver: checkSolver(solver, 'core/solver.js'), // the shared solver contract
   config: () => cfg,
   onChange: (s) => { if (mode() === 'local') publish(s); },
   async openDriver() {

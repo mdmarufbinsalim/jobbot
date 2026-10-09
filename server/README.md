@@ -21,8 +21,8 @@ KYC links are appended to `<out>/kyc-links.txt`.
     { "loginPhone": "+1…", "loginPin": "…", "smsUrl": "https://temp-number.com/…" }
 
 ## Captcha
-For now the bot takes a screenshot and waits. To plug in a solver service, pass `--captcha-solver ./solver.js`, a module whose default export is
-`{ async solve({ page, screenshot, log }) { …; return true; } }`; returning true lets the flow continue.
+The server always loads the shared `../extension/core/solver.js` (override with `--captcha-solver ./other.js`); the extension's local mode loads the same file, so the contract
+is defined once there. The shipped one solves nothing: it logs and returns false, so the bot waits for a person.
 
 ## Server API (`jobbot serve`)
 No token. Listens on `127.0.0.1:8787` only (headless; `--headed` to show the window). Only the CLI/curl and `chrome-extension://` pages are answered; websites and foreign Host headers get 403. Reach it remotely through an SSH tunnel.

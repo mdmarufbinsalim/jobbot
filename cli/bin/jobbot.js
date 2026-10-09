@@ -30,7 +30,7 @@ Bot
   login [--headed]       log in once (headless; a captcha needs --headed so you can solve it) and save the session
 
 Server (the process that owns the browser; runs in the background)
-  up [--headed] [--port 8787]                       start it     (alias: server start)
+  up [--headed] [--port 8787] [--captcha-solver file.js]    start it     (alias: server start)
   down                                              stop it      (alias: server stop)
   ps                                                is it up, which pid, what it is doing   (alias: server status)
   serve                                             run it in the foreground
@@ -43,7 +43,7 @@ const { values: v, positionals: pos } = parseArgs({
   allowPositionals: true,
   options: {
     url: { type: 'string' }, json: { type: 'boolean', default: false },
-    headed: { type: 'boolean', default: false }, port: { type: 'string', default: '8787' },
+    headed: { type: 'boolean', default: false }, 'captcha-solver': { type: 'string' }, port: { type: 'string', default: '8787' },
     f: { type: 'boolean', short: 'f', default: false }, site: { type: 'string' }, once: { type: 'boolean', default: false }, continuous: { type: 'boolean', default: false },
     phone: { type: 'string' }, pin: { type: 'string' }, 'sms-url': { type: 'string' }, help: { type: 'boolean', short: 'h', default: false },
   },
@@ -105,11 +105,14 @@ function summary(s, { log = 12 } = {}) {
   return out.join('\n');
 }
 
+// --captcha-solver <file.js>: use another solver instead of the shared extension/core/solver.js (absolute path, because the server runs elsewhere)
+const solverArgs = () => (v['captcha-solver'] ? ['--captcha-solver', path.resolve(v['captcha-solver'])] : []);
+
 async function serverStart() {
   if (await healthy()) return console.log(`Server already running at ${BASE}`);
   fs.mkdirSync(CONF, { recursive: true });
   const out = fs.openSync(LOG_FILE, 'a');
-  const args = [SERVER_BIN, 'serve', '--port', v.port, ...(v.headed ? ['--headed'] : [])];
+  const args = [SERVER_BIN, 'serve', '--port', v.port, ...(v.headed ? ['--headed'] : []), ...solverArgs()];
   const child = spawn(process.execPath, args, { detached: true, stdio: ['ignore', out, out] });
   child.unref();
   fs.writeFileSync(PID_FILE, String(child.pid));
@@ -144,7 +147,7 @@ const run = {
     console.log(`server   ${up ? 'up' : 'down'}  ${BASE}${pid && alive(pid) ? `  pid ${pid}` : ''}`);
     if (up) console.log(`\n${summary(await call('/status'))}`);
   },
-  async serve() { return new Promise((r) => spawn(process.execPath, [SERVER_BIN, 'serve', '--port', v.port, ...(v.headed ? ['--headed'] : [])], { stdio: 'inherit' }).on('exit', r)); },
+  async serve() { return new Promise((r) => spawn(process.execPath, [SERVER_BIN, 'serve', '--port', v.port, ...(v.headed ? ['--headed'] : []), ...solverArgs()], { stdio: 'inherit' }).on('exit', r)); },
   async logs() {
     if (!v.url && fs.existsSync(LOG_FILE)) {
       const t = spawn('tail', ['-n', '60', ...(v.f ? ['-f'] : []), LOG_FILE], { stdio: 'inherit' });
@@ -207,7 +210,7 @@ const run = {
     console.log(`Imported ${r.cookies} cookies (${r.dropped} other-domain cookies dropped)${r.restarted ? '; server browser restarted' : ''}.`);
   },
   async login() {
-    await new Promise((r) => spawn(process.execPath, [SERVER_BIN, 'login', ...(v.headed ? ['--headed'] : [])], { stdio: 'inherit' }).on('exit', r));
+    await new Promise((r) => spawn(process.execPath, [SERVER_BIN, 'login', ...(v.headed ? ['--headed'] : []), ...solverArgs()], { stdio: 'inherit' }).on('exit', r));
   },
 };
 if (!run[cmd]) { console.log(HELP); process.exit(1); }

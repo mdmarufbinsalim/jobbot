@@ -3,9 +3,11 @@ import { parseArgs } from 'node:util';
 import path from 'node:path';
 import fs from 'node:fs';
 import readline from 'node:readline';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { DEFAULT_STATE } from '../src/browser.js';
 import { createRuntime } from '../src/runtime.js';
 import { startServer } from '../src/server.js';
+import { checkSolver } from '../../extension/core/solver.js';
 
 const HELP = `jobbot-server <command> [options]
 
@@ -24,7 +26,7 @@ Options
   --shots <dir>          Save screenshots on every step change, captcha, stuck and KYC (run/login default ./shots)
   --no-shots             Do not save screenshots
   --out <dir>            Where KYC links are written (default ./out)
-  --captcha-solver <js>  Module with a default export { solve({ driver, dom, screenshot, log }) } returning true when solved
+  --captcha-solver <js>  Use another solver module instead of extension/core/solver.js (default export { solve({ driver, dom, screenshot, log }) })
   --no-interactive       Do not read keyboard commands
 
 serve only
@@ -51,8 +53,10 @@ const cmd = positionals[0] || 'run';
 if (v.help || !['run', 'login', 'serve'].includes(cmd)) { console.log(HELP); process.exit(v.help ? 0 : 1); }
 if (v.site && !['ca', 'com'].includes(v.site)) { console.error('--site must be ca or com'); process.exit(1); }
 
-let solver = null;
-if (v['captcha-solver']) solver = (await import(new URL(v['captcha-solver'], `file://${process.cwd()}/`).href)).default;
+// The solver is always connected: the shared extension/core/solver.js unless --captcha-solver points elsewhere.
+const solverFile = v['captcha-solver'] ? path.resolve(v['captcha-solver']) : fileURLToPath(new URL('../../extension/core/solver.js', import.meta.url));
+const solver = checkSolver((await import(pathToFileURL(solverFile).href)).default, solverFile);
+console.log(`captcha solver: ${solver.name || 'unnamed'} (${solverFile})`);
 
 const overrides = {};
 if (v.site) overrides.site = v.site;

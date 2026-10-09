@@ -37,6 +37,7 @@ export class Bot {
     this.paused = false; this.stopped = false; this.stuck = false; this.captcha = false; this.captchaOverride = false;
     this.jobs = new Map(); this.firstId = null; this.schedule = null;
     this.nav = null;
+    this.holdUntil = 0; // after pressing Begin on the human check, don't reload while it is being solved
     this.refresh = { step: -1, n: 0, at: 0 };
     this.lastProgress = Date.now();
     this.statusText = 'Starting…';
@@ -59,6 +60,7 @@ export class Bot {
     this.searchDone = { all: false, clear: false };
     this.clicked = new Set();
     this.pendingClick = false;
+    this.beginClicked = false;
   }
   resetLogin() {
     this.attempts = 0;
@@ -189,13 +191,13 @@ export class Bot {
   // --- controls ---
   pause() { this.paused = true; this.nav = null; this.status('Paused'); this.changed(); }
   resume() {
-    this.paused = false;
+    this.paused = false; this.holdUntil = 0;
     if (this.captcha) this.captchaOverride = true; // carry on even if the modal is still up; it re-arms once it is gone
     this.captcha = false; this.clearRefreshes(); this.progress(); this.status('Resumed'); this.changed();
   }
   async restart() {
     this.nav = null; this.clearRefreshes(); this.jobs.clear(); this.firstId = null; this.schedule = null;
-    this.resetLogin(); this.paused = false; this._site = null;
+    this.resetLogin(); this.paused = false; this._site = null; this.holdUntil = 0;
     await this.go(this.searchUrl);
     this.changed();
   }
@@ -237,6 +239,7 @@ export class Bot {
   async tick() {
     if (this.paused || this.stuck) return;
     if (await this.checkCaptcha()) return;
+    if (await this.humanCheck()) return;
 
     if (this.nav) {
       if (Date.now() < this.nav.at) return;
@@ -281,6 +284,26 @@ export class Bot {
       this.log('Waiting for the captcha to be solved (Resume to carry on)');
     }
     return true; // holds every step while the modal is up
+  }
+
+  // "Let's confirm you are human": press Begin, then leave the page alone for a while (a reload would restart the check).
+  async humanCheck() {
+    if (Date.now() < this.holdUntil) {
+      this.progress();
+      this.status('Security check started, waiting for it to be solved');
+      return true;
+    }
+    if (this.beginClicked || !(await this.dom('clickBegin').catch(() => false))) return false;
+    this.beginClicked = true;
+    this.holdUntil = Date.now() + 120000;
+    this.status('Security check: pressed Begin');
+    await this.shot('human-check');
+    if (this.host.solver) {
+      try {
+        if (await this.host.solver.solve({ driver: this.driver, dom: (op, arg) => this.dom(op, arg), screenshot: () => this.shot('human-check-solver'), log: this.log })) this.holdUntil = 0;
+      } catch (e) { this.log(`solver failed: ${e.message}`); }
+    }
+    return true;
   }
 
   // --- steps ---

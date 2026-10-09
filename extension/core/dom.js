@@ -21,6 +21,15 @@ export function pageFn({ op, arg }) {
     captchaVisible: () => [...document.querySelectorAll('.captcha-modal')].some((e) =>
       e.style.display === 'block' || (getComputedStyle(e).display === 'block' && e.offsetWidth > 0 && e.offsetHeight > 0)),
 
+    // Amazon's "Let's confirm you are human" interstitial: press Begin to start the check. (Solving it is up to a person or a solver.)
+    clickBegin: () => {
+      const b = [...document.querySelectorAll('button, input[type=submit], input[type=button], a, [role=button]')]
+        .find((x) => visible(x) && /^begin\b/i.test(textOf(x)));
+      if (!b || !/confirm you are human/i.test(document.body.innerText)) return false;
+      b.click();
+      return true;
+    },
+
     // --- search page ---
     clickAllTab: () => {
       const all = [...document.querySelectorAll('button, [role=button], [role=tab], a, label, span, div')]
