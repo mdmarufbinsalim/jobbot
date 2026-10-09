@@ -97,7 +97,15 @@ if (cmd === 'serve') {
       if (k.ctrl && k.name === 'c') return quit();
       if (k.name === 'p') controller.pause();
       if (k.name === 'r') controller.resume();
-      if (k.name === 's') { const d = await controller.screenshot(); if (d) say('screenshot taken (use --shots to save them)'); }
+      if (k.name === 's') {
+        const d = await controller.screenshot();
+        if (!d) return say('no screenshot available yet');
+        const dir = path.resolve(v.shots || 'shots');
+        fs.mkdirSync(dir, { recursive: true });
+        const file = path.join(dir, `${new Date().toISOString().replace(/[:.]/g, '-')}-manual.png`);
+        fs.writeFileSync(file, Buffer.from(d.split(',')[1], 'base64'));
+        say(`screenshot saved: ${file}`);
+      }
       if (k.name === 'n') controller.restart();
       if (k.name === 'q') quit();
     });
