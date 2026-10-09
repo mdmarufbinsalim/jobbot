@@ -186,13 +186,21 @@ function paintOverview() {
 //     : [empty(log.length ? 'No matches' : 'No responses yet', log.length ? 'Try a different filter.' : 'GraphQL responses appear here as pages load.')]));
 // }
 
+// What the bot has been doing (last lines of its own log), so a stuck step can be read without opening the worker console.
+let botLogText = '';
+function paintBotLog(lines) {
+  botLogText = lines.join('\n');
+  $('botLog').textContent = botLogText || 'No log yet.';
+}
+$('botLogCopy').onclick = () => navigator.clipboard?.writeText(botLogText).then(() => toast('Log copied')).catch(() => {});
+
 const paintAll = () => { paintLive(); paintSettings(); paintOverview(); };
 
 Promise.all([
   chrome.storage.local.get(null),
-  chrome.storage.session.get(['live', 'kycLinks']),
+  chrome.storage.session.get(['live', 'kycLinks', 'botLog']),
 ]).then(([l, s]) => {
-  st = l; live = s.live || null; kyc = s.kycLinks || [];
+  st = l; live = s.live || null; kyc = s.kycLinks || []; paintBotLog(s.botLog || []);
   paintAll();
 });
 
@@ -204,6 +212,7 @@ chrome.storage.onChanged.addListener((c, area) => {
     if (c.live) { live = c.live.newValue || null; paintLive(); }
     // if (c.gqlLog) { log = c.gqlLog.newValue || []; paintLog(); }
     if (c.kycLinks) { kyc = c.kycLinks.newValue || []; paintOverview(); }
+    if (c.botLog) paintBotLog(c.botLog.newValue || []);
   }
 });
 

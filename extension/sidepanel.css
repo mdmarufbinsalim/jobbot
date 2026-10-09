@@ -202,3 +202,5 @@ pre { margin: 0; padding: 10px; max-height: 300px; overflow: auto; background: v
 .captcha .tile .ord { font-size: 14px; min-width: 22px; padding: 3px 6px; }
 .captcha .tile .id { top: 4px; left: 6px; }
 .captcha .dot { width: 10px; height: 10px; margin: -5px 0 0 -5px; }
+
+.botlog { margin: 0; max-height: 220px; overflow: auto; padding: 8px 10px; border-radius: 8px; background: rgba(127,127,127,.12); font: 11px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; word-break: break-word; }

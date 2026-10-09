@@ -14,6 +14,24 @@ export function pageFn({ op, arg }) {
   const phoneField = (inputs) => inputs.find((i) => ['text', 'email', 'tel'].includes(i.type) && !PIN.test(labelOf(i)) && !CODE.test(labelOf(i)));
   const pinField = (inputs) => inputs.find((i) => i.type === 'password') || inputs.find((i) => PIN.test(labelOf(i)));
   const codeField = (inputs) => inputs.find((i) => CODE.test(labelOf(i)));
+  // The login page's "Select your Country" control: a native <select> (even a visually hidden or restyled one, or one inside
+  // a shadow root), or a custom dropdown (the first combobox / button / readonly input after the label text).
+  const deepQ = (sel, node = document) => [...node.querySelectorAll(sel), ...[...node.querySelectorAll('*')].filter((h) => h.shadowRoot).flatMap((h) => deepQ(sel, h.shadowRoot))];
+  const countryControl = () => {
+    const matches = (x) => /country/i.test(`${labelOf(x)} ${x.getAttribute('data-test-id') || ''} ${x.closest('label')?.textContent || ''}`);
+    const sels = deepQ('select').filter(matches);
+    const nat = sels.find(visible) || sels[0];
+    if (nat) return { el: nat, native: true };
+    const lab = deepQ('label, span, div, p, legend').filter((e) => visible(e) && /^\s*select your country\b/i.test(e.textContent || '') && (e.textContent || '').length < 60)
+      .sort((x, y) => (x.textContent || '').length - (y.textContent || '').length)[0]; // the tightest element holding the label text
+    if (!lab) return null;
+    const ctl = lab.control || lab.querySelector?.('select, input, button');
+    if (ctl && ctl.tagName === 'SELECT') return { el: ctl, native: true };
+    const el = deepQ('[role=combobox], [aria-haspopup], button, input[readonly], select')
+      .find((c) => visible(c) && !(c.compareDocumentPosition(lab) & Node.DOCUMENT_POSITION_FOLLOWING) && !c.contains(lab) && !/^(continue|get help)/i.test(textOf(c)));
+    return el ? { el, native: el.tagName === 'SELECT' } : null;
+  };
+  const countryText = (c) => (c.native ? c.el.selectedOptions[0]?.textContent || '' : c.el.value || textOf(c.el)) || '';
 
   const ops = {
     // The page always has an empty .captcha-modal (computed display: block, 0x0); a real captcha sets an inline
@@ -182,10 +200,51 @@ export function pageFn({ op, arg }) {
       const inputs = [...document.querySelectorAll('input')].filter(visible);
       return {
         code: !!codeField(inputs), sms: smsRadios().length > 0, pin: !!pinField(inputs), phone: !!phoneField(inputs),
+        selects: document.querySelectorAll('select').length, country: !!countryControl(), countryOk: /canada/i.test(countryControl() ? countryText(countryControl()) : ''),
         codeValue: codeField(inputs)?.value || '', pinValue: pinField(inputs)?.value || '', phoneValue: phoneField(inputs)?.value || '',
       };
     },
     // Works with React-controlled inputs: native setter, then the events the framework listens for.
+    // Chooses Canada in the country control the way a person does: click the control, then click Canada. Two calls.
+    //   1st call -> 'opened'  (the control was clicked)
+    //   2nd call -> 'selected' / 'picked' (Canada was clicked; a native <select> that did not take the click is set directly)
+    // -> 'none' | 'no option' | 'opened' | 'selected' | 'picked'
+    pickCountry: () => {
+      const c = countryControl();
+      if (!c) return 'none';
+      const want = (t) => /^\s*canada\b/i.test(t);
+      const tap = (el) => { // the usual pointer / mouse sequence at the middle of the element
+        const r = el.getBoundingClientRect(), x = r.left + r.width / 2, y = r.top + r.height / 2;
+        const base = { bubbles: true, cancelable: true, composed: true, clientX: x, clientY: y, button: 0, view: window };
+        const ptr = { pointerId: 1, pointerType: 'mouse', isPrimary: true };
+        const fire = (t, extra) => el.dispatchEvent(new (t.startsWith('pointer') ? PointerEvent : MouseEvent)(t, t.startsWith('pointer') ? { ...base, ...ptr, ...extra } : { ...base, ...extra }));
+        fire('pointerover', { buttons: 0 }); fire('mouseover', { buttons: 0 }); fire('pointermove', { buttons: 0 }); fire('mousemove', { buttons: 0 });
+        fire('pointerdown', { buttons: 1 }); fire('mousedown', { buttons: 1 }); fire('pointerup', { buttons: 0 }); fire('mouseup', { buttons: 0 }); fire('click', { buttons: 0 });
+      };
+      const entries = () => [...document.querySelectorAll('[role=option], [role=listbox] li, li, option, [data-value]')].filter((x) => visible(x) && want(textOf(x)));
+      const mark = c.el.dataset.jbOpened ? Number(c.el.dataset.jbOpened) : 0;
+      const fresh = !mark || Date.now() - mark > 4000;
+      if (fresh && !(c.native ? false : entries().length)) { // 1st: click the control (a custom list may already be open)
+        c.el.dataset.jbOpened = String(Date.now());
+        c.el.focus(); tap(c.el);
+        try { c.el.showPicker?.(); } catch { /* needs a real user gesture; the click above is what we have */ }
+        return 'opened';
+      }
+      delete c.el.dataset.jbOpened;
+      const entry = entries()[0]; // 2nd: click Canada in the list
+      if (entry) tap(entry);
+      if (c.native) {
+        const o = [...c.el.options].find((x) => want(x.textContent));
+        if (!o) return 'no option';
+        if (!/canada/i.test(c.el.selectedOptions[0]?.textContent || '')) { // the click did not take (the list is the browser's own): set it
+          Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set.call(c.el, o.value);
+          c.el.dispatchEvent(new Event('input', { bubbles: true })); c.el.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+        return 'selected';
+      }
+      return entry ? 'picked' : 'no option';
+    },
+
     loginFill: ({ kind, value }) => {
       const inputs = [...document.querySelectorAll('input')].filter(visible);
       const input = kind === 'pin' ? pinField(inputs) : kind === 'code' ? codeField(inputs) : phoneField(inputs);

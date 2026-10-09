@@ -65,7 +65,7 @@ export class Bot {
   }
   resetLogin() {
     this.attempts = 0;
-    this.loginFlags = { phone: false, pin: false, send: false, fetch: false, code: false };
+    this.loginFlags = { phone: false, pin: false, send: false, fetch: false, code: false, country: 0 };
     this.smsRequestedAt = 0; this.smsCode = null;
   }
   progress() { this.lastProgress = Date.now(); }
@@ -237,7 +237,8 @@ export class Bot {
         }
         await this.tick();
       } catch (e) {
-        if (!/Execution context|navigation|Target closed|closed|No tab|Cannot access|frame|Receiving end/i.test(e.message)) this.log(`error: ${String(e.message).split('\n')[0]}`);
+        const msg = String(e.message).split('\n')[0];
+        if (msg !== this.lastErr) { this.lastErr = msg; this.log(`${/Execution context|navigation|Target closed|closed|No tab|Cannot access|frame|Receiving end/i.test(msg) ? 'page busy' : 'error'}: ${msg}`); } // each distinct error once
       }
       await sleep(500);
     }
@@ -389,6 +390,8 @@ export class Bot {
   async loginTick() {
     const f = this.loginFlags, c = this.cfg();
     const st = (t) => this.status(`Login · ${t}`);
+    const settle = T.LOGIN_SETTLE_MS ?? 3000; // let the form finish rendering (the country list, the phone field) before touching it
+    if (Date.now() - this.docAt < settle) return st(`waiting ${Math.ceil((settle - (Date.now() - this.docAt)) / 1000)}s for the page to load`);
     const info = await this.dom('loginInspect');
 
     if (info.code && !info.sms) { // reading the SMS code needs neither credentials nor attempts
@@ -416,9 +419,21 @@ export class Bot {
       return;
     }
 
+    this.loginSeen = `country ${info.country ? (info.countryOk ? 'ok' : 'needs Canada') : 'not found'}, phone ${info.phone ? 'found' : 'not found'}, pin ${info.pin ? 'found' : 'no'}, ${info.selects} select(s) on the page`;
+    if (this.loginSeen !== this.loginSeenLogged) { this.loginSeenLogged = this.loginSeen; this.log(`login: sees ${this.loginSeen}`); }
     if (!c.loginPhone || !c.loginPin) return st('Auto-login paused: set the phone and PIN in Settings');
     if (this.attempts >= T.MAX_LOGIN_ATTEMPTS) return st('Auto-login stopped: attempt limit reached (Restart to reset)');
 
+    if (info.country && !info.countryOk && f.country < 8) { // "Select your Country": Canada, a few tries (a custom dropdown needs one tick to open)
+      f.country++; this.progress();
+      st('Country: selecting Canada…');
+      const r = await this.dom('pickCountry');
+      this.log(`login: country ${r}`);
+      await sleep(r === 'opened' ? 500 : 300);
+      // the phone may already have been submitted without a country (the page then asks for it): press Continue again
+      if ((r === 'selected' || r === 'picked') && info.phoneValue) { await sleep(300); await this.dom('pressLoginButton'); f.phone = true; st('Country: Canada selected, continuing'); }
+      return;
+    }
     if (info.sms) {
       if (f.send) return st('Verification: code requested by SMS');
       f.send = true; this.attempts++; this.smsRequestedAt = Date.now(); this.progress();
@@ -440,7 +455,7 @@ export class Bot {
     }
     if (info.phone) {
       if (f.phone) return st('Phone step: submitted');
-      if (info.phoneValue) return;
+      if (info.phoneValue) return st(`Phone filled; waiting (${this.loginSeen})`);
       f.phone = true; this.attempts++; this.progress();
       st('Phone step: filling…');
       await this.dom('loginFill', { kind: 'phone', value: c.loginPhone });
@@ -449,7 +464,7 @@ export class Bot {
       return st(ok ? 'Phone step: submitted' : 'Phone step: filled, no Continue button found');
     }
     st('Waiting for the login form…');
-    if (this.stalled()) await this.reloadStalled(3, 'Login form did not load');
+    if (this.stalled()) await this.reloadStalled(0, 'Login form did not load');
   }
 
   async kyc(u) {

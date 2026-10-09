@@ -54,7 +54,7 @@ function publish(status) {
     if (flow !== lastFlow) { lastFlow = flow; local.flow = s.flow; }
     const cleared = store.kycClearedAt || 0;
     await chrome.storage.local.set(local).catch(() => {});
-    await chrome.storage.session.set({ live: s.live, kycLinks: (s.kyc || []).filter((k) => k.at > cleared) }).catch(() => {});
+    await chrome.storage.session.set({ live: s.live, kycLinks: (s.kyc || []).filter((k) => k.at > cleared), botLog: s.log || [] }).catch(() => {});
   }, 250);
 }
 
